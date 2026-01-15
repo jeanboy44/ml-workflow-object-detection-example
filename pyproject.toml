@@ -1,0 +1,26 @@
+[project]
+name = "ml-workflow-object-detection-example"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "lse-object-detector>=0.1.0",
+
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+    "ruff>=0.14.11",
+]
+experiments = [
+    "polars>=1.37.1",
+]
+
+[tool.uv.workspace]
+members = ["packages/lse-object-detector"]
+
+[tool.uv.sources]
+lse-object-detector = { workspace = true }

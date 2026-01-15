@@ -1,0 +1,21 @@
+repos:
+  - repo: local
+    hooks:
+      - id: jupyter-nb-clear-output
+        name: jupyter-nb-clear-output
+        files: \.ipynb$
+        language: system
+        entry: python -m jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace
+        
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.9.25
+    hooks:
+      - id: uv-lock
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: "v0.14.11"
+    hooks:
+      - id: ruff
+        types_or: [ python, pyi ]
+        args: ["--fix"]
