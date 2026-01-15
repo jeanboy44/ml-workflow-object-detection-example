@@ -19,6 +19,11 @@ experiments = [
     "polars>=1.37.1",
 ]
 
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py311"
+
 [tool.uv.workspace]
 members = ["packages/lse-object-detector"]
 
