@@ -1,7 +1,7 @@
 [project]
-name = "lse-object-detector"
+name = "ml-object-detector"
 version = "0.1.0"
-description = "LS Electric Object Detector Example"
+description = "ML Object Detector Example"
 readme = "README.md"
 authors = [
     { name = "Jingeol Ryu", email = "jgryu@ls-electric.com" }
@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
-lse-object-detector = "lse_object_detector:main"
+ml-object-detector = "ml_object_detector:main"
 
 [build-system]
 requires = ["uv_build>=0.9.25,<0.10.0"]
