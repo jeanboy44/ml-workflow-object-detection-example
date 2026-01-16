@@ -1,9 +1,9 @@
 # Zero-Shot Object Detection with Hugging Face OWL-ViT
 """
 실행 예시:
-    uv run experiments/01_zero_shot_inference.py --image-path experiments/cat_01.jpg --phrases "a dog"
+    uv run experiments/e01_zero_shot_inference.py --image-path experiments/cat_01.jpg --phrases "a dog"
     # 결과 저장도 가능
-    python 01_zero_shot_inference.py --image-path path/to/image.jpg --phrases "a dog" "a person" --save-path result.jpg
+    uv run experiments/e01_zero_shot_inference.py --image-path path/to/image.jpg --phrases "a dog" "a person" --save-path result.jpg
 """
 
 from pathlib import Path
