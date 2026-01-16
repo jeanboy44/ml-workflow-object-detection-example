@@ -19,6 +19,11 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uv sync  # 모든 의존성 설치 (pyproject.toml/uv.lock 기반)
 ```
 
+### 필요 리소스 다운로드
+```sh
+uv run scripts/azblob_lite.py download jgryu --container-path ml-workflow-object-detection-example/models/owlvit/ --dst-path artifacts/google/owlvit-base-patch32
+```
+
 ## 🧑‍💻 개발 환경
 - Python >= 3.11
 - uv >= 0.9.25

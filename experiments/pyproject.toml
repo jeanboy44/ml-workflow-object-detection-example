@@ -8,8 +8,8 @@ dependencies = [
     "matplotlib>=3.10.8",
     "pillow>=12.1.0",
     "polars>=1.37.1",
+    "protobuf>=6.33.4",
     "torch>=2.9.1",
     "transformers>=4.57.5",
     "typer>=0.21.1",
-
 ]
