@@ -1,5 +1,7 @@
 """
 KAGGLE_API_TOKEN 설정 필요
+
+https://www.kaggle.com/datasets/akhatova/pcb-defects
 """
 
 from pathlib import Path

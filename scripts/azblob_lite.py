@@ -90,29 +90,83 @@ def upload(
     upload_path(cc, Path(src_path), container_path)
 
 
-# 다운로드 (cloud→local)
-def download_blobs(cc: ContainerClient, container_path: str, dst_path: Path):
-    # container_path(=다운로드 기준경로) 길이만큼 blob.name 앞부분을 제거하여 저장
-    prefix_len = len(container_path) if container_path else 0
-    blobs = (
-        cc.list_blobs(name_starts_with=container_path)
-        if container_path
-        else cc.list_blobs()
-    )
+def download_blob(
+    cc,
+    src_path: str,
+    dst_path: Path,
+    container_name: str = "dcim-llm-dev",
+):
+    """
+    Azure Blob Storage의 특정 파일을 로컬로 다운로드합니다.
+
+    Args:
+        src_path (str): 컨테이너 내에서 다운로드할 파일의 경로
+        dst_path (Path): 로컬 디렉토리로 파일을 저장할 경로
+        container_name (str): 컨테이너 이름
+    """
+
+    blob_client = cc.get_blob_client(src_path)
+
+    if not blob_client.exists():
+        raise FileNotFoundError(f"Blob {src_path} does not exist.")
+
+    with dst_path.open("wb") as f:
+        f.write(blob_client.download_blob().readall())
+
+
+def download_blobs(
+    cc,
+    prefix: str,
+    dst_dir: Path,
+):
+    blobs = cc.list_blobs(name_starts_with=prefix)
+    count = 0
+    skipped_conflicts = set()
+
     for blob in blobs:
-        # blob.name 에서 container_path(prefix) 부분을 제거
-        local_rel_path = (
-            blob.name[prefix_len:]
-            if prefix_len and blob.name.startswith(container_path)
-            else blob.name
-        )
-        local_rel_path = local_rel_path.lstrip("/")
-        local_path = dst_path / local_rel_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(local_path, "wb") as f:
-            data = cc.download_blob(blob.name).readall()
-            f.write(data)
-        typer.echo(f"다운로드: {local_path}")
+        blob_name = blob.name
+        typer.secho(f"Found blob: {blob_name} (size: {blob.size})")
+
+        # ✅ 1. 디렉토리처럼 보이는 빈 blob은 저장하지 않음
+        if blob.size == 0 and (
+            blob_name.endswith("/")
+            or "/" in blob_name
+            and "." not in blob_name.split("/")[-1]
+        ):
+            typer.secho(f"Skipping directory-like blob: {blob_name}")
+            continue
+
+        dst_path = dst_dir / blob_name
+
+        try:
+            # ✅ 2. 상위 경로 중 파일이 존재하면 제거 (파일->디렉토리 전환 허용)
+            for parent in reversed(dst_path.parents):
+                if parent.exists() and parent.is_file():
+                    # logger.warning(
+                    #     f"Removing file conflicting with directory: {parent}"
+                    # )
+                    parent.unlink()  # 파일 삭제
+                    break  # 한 번만 처리하면 됨
+
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # ✅ 3. blob 다운로드
+            blob_client = cc.get_blob_client(blob_name)
+            with dst_path.open("wb") as f:
+                f.write(blob_client.download_blob().readall())
+            count += 1
+
+        except Exception:
+            # logger.error(f"Failed to download blob: {blob_name}: {e}")
+            skipped_conflicts.add(blob_name)
+
+    if count == 0:
+        typer.secho(f"No valid blobs found under prefix: {prefix}")
+    else:
+        typer.secho(f"Downloaded {count} files from {prefix}")
+
+    if skipped_conflicts:
+        typer.secho(f"Skipped {len(skipped_conflicts)} blobs due to errors.")
 
 
 @app.command(help="Azure Blob Storage 컨테이너 파일/폴더를 로컬에 다운로드")

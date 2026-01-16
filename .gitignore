@@ -211,3 +211,5 @@ data/*
 
 artifacts/*
 !artifacts/.gitkeep
+
+data2/*
