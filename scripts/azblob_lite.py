@@ -84,7 +84,7 @@ def upload(
     예) 파일:
       python scripts/azblob_lite.py upload --src-path ./test.txt --container foo
     예) 폴더:
-      python scripts/azblob_lite.py upload --src-path images --container foo --container-path 2024imgs
+      python scripts/azblob_lite.py upload --src-path images --container foo --container-path artifacts/google/owlvit-base-patch32
     """
     cc = get_container_client(container)
     upload_path(cc, Path(src_path), container_path)
