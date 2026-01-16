@@ -5,18 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "ml-object-detector>=0.1.0",
-
-]
-
-[dependency-groups]
-dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "ruff>=0.14.11",
-]
-experiments = [
-    "polars>=1.37.1",
+
 ]
 
 [tool.ruff]
@@ -25,7 +17,7 @@ indent-width = 4
 target-version = "py311"
 
 [tool.uv.workspace]
-members = ["packages/ml-object-detector"]
+members = ["packages/ml-object-detector", "experiments"]
 
 [tool.uv.sources]
 ml-object-detector = { workspace = true }
