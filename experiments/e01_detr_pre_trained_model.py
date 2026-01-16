@@ -3,7 +3,7 @@
 
 ## 사전 준비
 1. 필요 리소스 다운로드
-    uv run scripts/azblob_lite.py download jgryu --container-path ml-workflow-object-detection-example/IDEA-Research/grounding-dino-base/ --dst-path artifacts/IDEA-Research/grounding-dino-base/
+uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/facebook/detr-resnet-50/ --dst-path artifacts/facebook/detr-resnet-50/
 
 ## 실험 실행
     uv run experiments/e01_detr_pre_trained_model.py experiments/sample_data/ --output-dir data/detr_results --threshold 0.7

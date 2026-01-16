@@ -5,12 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "azure-storage-blob>=12.28.0",
+    "adlfs>=2025.8.0",
     "kaggle>=1.8.3",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "ruff>=0.14.11",
+    "typer>=0.21.1",
 ]
 
 [tool.ruff]
