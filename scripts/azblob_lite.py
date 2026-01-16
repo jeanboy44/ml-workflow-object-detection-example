@@ -74,8 +74,8 @@ def upload_path(cc: ContainerClient, src_path: Path, container_path: str = ""):
 
 @app.command(help="로컬 파일/폴더를 Azure Blob Storage 컨테이너에 업로드")
 def upload(
-    src_path: str = typer.Argument(..., help="로컬 파일/폴더 경로"),
-    container: str = typer.Option(..., help="대상 Azure Blob 컨테이너명"),
+    container: str = typer.Argument(..., help="대상 Azure Blob 컨테이너명"),
+    src_path: str = typer.Option(..., help="로컬 파일/폴더 경로"),
     container_path: str = typer.Option(
         "", help="컨테이너 내 업로드 경로(예: images2026/)"
     ),
