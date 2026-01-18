@@ -1,5 +1,5 @@
 """
-uv run experiments/e03_yolo_pretrained_model.py experiments/sample_data --output-dir data/yolo26n/
+uv run experiments/e02_yolo_pre_trained_model.py experiments/sample_data --output-dir data/output_yolo26n/
 """
 
 from pathlib import Path

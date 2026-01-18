@@ -6,7 +6,7 @@
 uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/facebook/detr-resnet-50/ --dst-path artifacts/facebook/detr-resnet-50/
 
 ## 실험 실행
-    uv run experiments/e01_detr_pre_trained_model.py experiments/sample_data/ --output-dir data/detr_results --threshold 0.7
+    uv run experiments/e01_detr_pre_trained_model.py experiments/sample_data/ --output-dir data/output_detr --score-threshold 0.7
 
 """
 
