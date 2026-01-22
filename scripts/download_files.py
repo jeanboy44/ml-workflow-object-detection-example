@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "fsspec>=2026.1.0",
+#     "python-dotenv>=1.2.1",
+#     "typer>=0.21.1",
+# ]
+# ///
+
 from pathlib import Path
 
 import fsspec

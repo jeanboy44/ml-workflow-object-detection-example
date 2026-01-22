@@ -1,15 +1,12 @@
 """
-Zero-Shot Object Detection with Hugging Face GroundingDINO
+# Zero-Shot Object Detection with Grounding DINO
 
-[실행 예시]
-uv run experiments/e00_grounddino_zero_shot_inference.py data/PCB_DATASET/images/Missing_hole/01_missing_hole_01.jpg --prompt "missing_hole" --save-path data/output_grounddino/sample1.jpg --threshold 0.7
+## 사전 준비
+1. 필요 리소스 다운로드
+uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/IDEA-Research/grounding-dino-base/ --dst-path artifacts/IDEA-Research/grounding-dino-base/
 
-* 모델 경로/이미지 경로는 workspace 내 실제 데이터 기준으로 입력 필요
-
-사전 준비:
-  uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/IDEA-Research/grounding-dino-base/ --dst-path artifacts/IDEA-Research/grounding-dino-base/
-
-* GroundingDINO, transformers, torch, typer 등 설치 필요 (에러 발생시 pip install)
+## 실험 실행
+    uv run experiments/e00_grounddino_zero_shot_inference.py experiments/sample_data/cat_03.jpg "cat" --threshold 0.2 --save-path data/output_ground_dino/cat_03.jpg
 """
 
 import sys
@@ -21,54 +18,49 @@ from transformers import GroundingDinoForObjectDetection, GroundingDinoProcessor
 
 from experiments.utils import load_image, plot_detections
 
+MODEL_NAME = "artifacts/IDEA-Research/grounding-dino-base"
+
 
 def main(
-    image_path: Path = typer.Argument(
-        ...,
-        help="입력 이미지 경로 (ex: data/PCB_DATASET/images/Missing_hole/01_missing_hole_01.jpg)",
-    ),
-    prompt: str = typer.Option(..., help="탐지할 텍스트 (쉼표로 구분, ex: 'cat,dog')"),
-    model_name: str = typer.Option(
-        "artifacts/IDEA-Research/grounding-dino-base",
-        help="huggingface 저장소명 또는 로컬 폴더 (ex: artifacts/IDEA-Research/grounding-dino-base)",
-    ),
-    threshold: float = typer.Option(0.3, help="신뢰도 임계값 (0~1, ex: 0.3)"),
+    image_path: Path = typer.Argument(..., help="입력 이미지 경로"),
+    prompt: str = typer.Argument(..., help="탐지할 텍스트 (ex: cat,dog)"),
+    threshold: float = typer.Option(0.3, "--threshold", "-t", help="신뢰도 임계값"),
     save_path: Path = typer.Option(
-        "result.jpg", help="검출 결과 이미지 경로 (ex: result.jpg)"
+        "result.jpg", "--save-path", "-o", help="결과 이미지 경로"
     ),
     device: str = typer.Option(
-        "cuda" if torch.cuda.is_available() else "cpu", help="cpu|cuda 자동 선택 기본"
+        "cuda" if torch.cuda.is_available() else "cpu", "--device", help="cpu/cuda 선택"
     ),
 ):
-    # 입력 경로들이 상대경로/절대경로 혼용돼도 안정 동작하도록 보정
     image_path = Path(image_path)
     save_path = Path(save_path)
-    model_name = str(model_name)
     if not image_path.exists():
-        typer.echo(f"[ERROR] 이미지 파일이 존재하지 않습니다: {image_path}")
+        typer.echo(f"[ERROR] 이미지 파일 없음: {image_path}")
         sys.exit(1)
-    if not Path(model_name).exists():
-        typer.echo(
-            f"[WARNING] 모델 경로가 존재하지 않습니다: {model_name} (transformers repo명일 수 있음)"
-        )
-    processor = GroundingDinoProcessor.from_pretrained(model_name)
-    model = GroundingDinoForObjectDetection.from_pretrained(model_name).to(device)
+
+    processor = GroundingDinoProcessor.from_pretrained(MODEL_NAME)
+    model = GroundingDinoForObjectDetection.from_pretrained(MODEL_NAME).to(device)
     image = load_image(image_path)
     text_query = [t.strip() for t in prompt.split(",") if t.strip()]
     prompt_str = ". ".join(text_query)
     inputs = processor(images=image, text=prompt_str, return_tensors="pt").to(device)
+
     with torch.no_grad():
         outputs = model(**inputs)
+
     target_sizes = [image.size[::-1]]
-    results = processor.post_process_object_detection(
+    results = processor.post_process_grounded_object_detection(
         outputs,
-        target_sizes=target_sizes,
-        box_threshold=threshold,
+        threshold=threshold,
         text_threshold=threshold,
-    )[0]
+        target_sizes=target_sizes,
+    )
+    if isinstance(results, list):
+        results = results[0]
     boxes = results["boxes"].cpu().numpy()
     scores = results["scores"].cpu().numpy()
-    labels = [results["labels"][i] for i in range(len(results["labels"]))]
+    labels = results["labels"]
+    save_path.parent.mkdir(parents=True, exist_ok=True)
     plot_detections(
         image, boxes, scores, labels, score_threshold=threshold, save_path=save_path
     )

@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "kaggle>=1.8.3",
+#     "python-dotenv>=1.2.1",
+#     "typer>=0.21.1",
+# ]
+# ///
 """
 KAGGLE_API_TOKEN 설정 필요
 
