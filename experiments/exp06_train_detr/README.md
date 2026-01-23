@@ -4,31 +4,36 @@ PCB 결함 데이터셋을 대상으로 DETR 학습 파이프라인을 구성하
 
 ## 사전 준비
 
-### 1) 데이터 분할 (train/val/test)
+### 1) 데이터 분할 (COCO format)
 ```sh
-uv run experiments/exp05_train_yolo/split_pcb_dataset.py --base-dir data/PCB_DATASET --output-dir data/pcb_splits
+uv run experiments/exp06_train_detr/split_pcb_dataset_coco.py --base-dir data/PCB_DATASET --output-dir data/pcb_splits_coco
 ```
 
 ## 실험
 
-### 1) DETR 파인튜닝
+### 1) DETR 파인튜닝 (기본)
 ```sh
 uv run experiments/exp06_train_detr/train_detr_hydra.py
 ```
 
-### 2) Transfer Learning (Backbone Freeze)
+### 2) Fast test (1 step)
+```sh
+uv run experiments/exp06_train_detr/train_detr_hydra.py --config-name fasttest_config
+```
+
+### 3) Transfer Learning (Backbone Freeze)
 ```sh
 uv run experiments/exp06_train_detr/train_detr_hydra.py train.freeze_backbone=true
 ```
 
-### 3) From Scratch
+### 4) From Scratch
 ```sh
-uv run experiments/exp06_train_detr/train_detr_hydra.py train.pretrained=false train.epochs=20
+uv run experiments/exp06_train_detr/train_detr_hydra.py train.pretrained=false train.training_args.num_train_epochs=20
 ```
 
-### 4) 고해상도 학습 (더 많은 epoch)
+### 5) 고해상도 학습 (더 많은 epoch)
 ```sh
-uv run experiments/exp06_train_detr/train_detr_hydra.py train.epochs=20 train.batch_size=2 train.lr=5e-5
+uv run experiments/exp06_train_detr/train_detr_hydra.py train.image_size=960 train.training_args.num_train_epochs=20 train.training_args.per_device_train_batch_size=2 train.training_args.learning_rate=5e-5
 ```
 
 ## MLflow Tracking (Databricks)

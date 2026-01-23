@@ -1,0 +1,38 @@
+train:
+  data_dir: data/pcb_splits_coco  # required
+  output_dir: artifacts/exp06/detr_finetune  # required
+  pretrained: true
+  seed: 42  # required
+  device: cpu  # required
+  score_threshold: 0.5
+  iou_threshold: 0.5
+  freeze_backbone: false
+  model_path: null
+  image_size: null
+  fast_dev_run: true
+  max_steps: 1
+  max_train_samples: null
+  max_eval_samples: null
+  max_test_samples: null
+  training_args:
+    num_train_epochs: 1  # required
+    per_device_train_batch_size: 4  # required
+    per_device_eval_batch_size: 4  # required
+    learning_rate: 1.0e-4  # required
+    weight_decay: 1.0e-4  # required
+    eval_strategy: steps  # required
+    logging_strategy: steps  # required
+    save_strategy: "no"  # required
+    eval_steps: 1
+    logging_steps: 1
+    max_steps: 1
+    remove_unused_columns: false  # required
+    label_names: [labels]  # required
+    dataloader_drop_last: false  # required
+    seed: ${..seed}  # required
+    report_to: []  # required
+
+mlflow:
+  tracking_uri: databricks
+  experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp06_train_detr
+  run_name: null

@@ -19,7 +19,7 @@ import torch
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 from torchvision.datasets import CocoDetection
 from transformers import (
     DetrConfig,
@@ -37,10 +37,12 @@ def build_model(
     label2id: dict[str, int],
     id2label: dict[int, str],
     freeze_backbone: bool,
+    model_path: str | None,
 ) -> DetrForObjectDetection:
+    backbone_path = model_path or "artifacts/facebook/detr-resnet-50"
     if pretrained:
         model = DetrForObjectDetection.from_pretrained(
-            "artifacts/facebook/detr-resnet-50",
+            backbone_path,
             num_labels=len(label2id),
             id2label=id2label,
             label2id=label2id,
@@ -49,7 +51,7 @@ def build_model(
         )
     else:
         config = DetrConfig.from_pretrained(
-            "artifacts/facebook/detr-resnet-50",
+            backbone_path,
             num_labels=len(label2id),
             id2label=id2label,
             label2id=label2id,
@@ -123,22 +125,50 @@ def build_collate_fn(processor: DetrImageProcessor):
 def build_compute_metrics(
     processor: DetrImageProcessor, score_threshold: float, iou_threshold: float
 ):
+    def _extract_predictions(predictions):
+        if isinstance(predictions, dict):
+            return predictions.get("logits"), predictions.get("pred_boxes")
+
+        if isinstance(predictions, (list, tuple)):
+            values = []
+            for item in predictions:
+                if isinstance(item, dict):
+                    if "logits" in item and "pred_boxes" in item:
+                        return item["logits"], item["pred_boxes"]
+                    continue
+                values.append(item)
+            if len(values) >= 2:
+                return values[0], values[1]
+
+        return None, None
+
     def _compute_metrics(eval_pred):
         predictions, label_ids = eval_pred
-        if isinstance(predictions, (list, tuple)):
-            logits, pred_boxes = predictions[:2]
-        else:
-            logits, pred_boxes = predictions
+        logits, pred_boxes = _extract_predictions(predictions)
+
+        if logits is None or pred_boxes is None:
+            return {"precision": 0.0, "recall": 0.0, "mean_iou": 0.0}
 
         outputs = DetrObjectDetectionOutput(
             logits=torch.tensor(logits),
             pred_boxes=torch.tensor(pred_boxes),
         )
 
+        if isinstance(label_ids, tuple) and len(label_ids) == 1:
+            label_ids = label_ids[0]
+
         if isinstance(label_ids, np.ndarray):
             labels = label_ids.tolist()
         else:
             labels = label_ids
+
+        if isinstance(labels, dict):
+            labels = [labels]
+        elif labels and isinstance(labels[0], (list, tuple)):
+            flattened = []
+            for item in labels:
+                flattened.extend(item)
+            labels = flattened
 
         targets = []
         for label in labels:
@@ -146,6 +176,8 @@ def build_compute_metrics(
             targets.append(target)
 
         target_sizes = torch.stack([target["orig_size"] for target in targets])
+        if target_sizes.shape[0] != outputs.logits.shape[0]:
+            return {"precision": 0.0, "recall": 0.0, "mean_iou": 0.0}
         results = processor.post_process_object_detection(
             outputs, target_sizes=target_sizes, threshold=score_threshold
         )
@@ -187,7 +219,15 @@ def build_compute_metrics(
     return _compute_metrics
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+def maybe_subset(dataset: Dataset, max_samples: int | None) -> Dataset:
+    if max_samples is None:
+        return dataset
+    if max_samples <= 0:
+        return dataset
+    return Subset(dataset, list(range(min(len(dataset), max_samples))))
+
+
+@hydra.main(version_base=None, config_path="conf", config_name="default_config")
 def main(cfg: DictConfig) -> None:
     load_dotenv()
 
@@ -202,19 +242,15 @@ def main(cfg: DictConfig) -> None:
         mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
 
-    train_cfg = dict(cfg.get("train", {}))
-    data_dir = Path(train_cfg.get("data_dir", "data/pcb_splits"))
-    output_dir = Path(train_cfg.get("output_dir", "artifacts/exp06/detr_finetune"))
-    pretrained = bool(train_cfg.get("pretrained", True))
-    epochs = int(train_cfg.get("epochs", 10))
-    batch_size = int(train_cfg.get("batch_size", 4))
-    lr = float(train_cfg.get("lr", 1e-4))
-    weight_decay = float(train_cfg.get("weight_decay", 1e-4))
-    seed = int(train_cfg.get("seed", 42))
-    device = train_cfg.get("device", "cpu")
-    score_threshold = float(train_cfg.get("score_threshold", 0.5))
-    iou_threshold = float(train_cfg.get("iou_threshold", 0.5))
-    freeze_backbone = bool(train_cfg.get("freeze_backbone", False))
+    train_cfg = OmegaConf.to_container(cfg.get("train", {}), resolve=True) or {}
+    data_dir = Path(train_cfg["data_dir"])
+    output_dir = Path(train_cfg["output_dir"])
+    seed = train_cfg["seed"]
+    device = train_cfg["device"]
+
+    training_args_cfg = dict(train_cfg["training_args"])
+    # epochs = training_args_cfg["num_train_epochs"]
+    batch_size = training_args_cfg["per_device_train_batch_size"]
 
     random.seed(seed)
     torch.manual_seed(seed)
@@ -225,9 +261,23 @@ def main(cfg: DictConfig) -> None:
         label2id = json.load(f)
     id2label = {v: k for k, v in label2id.items()}
 
-    processor = DetrImageProcessor.from_pretrained("artifacts/facebook/detr-resnet-50")
+    processor_kwargs = {}
+    if train_cfg.get("image_size"):
+        processor_kwargs = {
+            "size": {"shortest_edge": train_cfg["image_size"]},
+            "max_size": train_cfg["image_size"],
+        }
+    processor = DetrImageProcessor.from_pretrained(
+        "artifacts/facebook/detr-resnet-50", **processor_kwargs
+    )
 
-    model = build_model(pretrained, label2id, id2label, freeze_backbone)
+    model = build_model(
+        train_cfg["pretrained"],
+        label2id,
+        id2label,
+        train_cfg["freeze_backbone"],
+        train_cfg.get("model_path"),
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     default_run_name = "detr_train"
@@ -236,7 +286,12 @@ def main(cfg: DictConfig) -> None:
 
     with mlflow.start_run(run_name=run_name):
         mlflow.log_text(OmegaConf.to_yaml(cfg), "hydra/config.yaml")
-        mlflow.log_params({f"train.{key}": value for key, value in train_cfg.items()})
+        for key, value in train_cfg.items():
+            if key == "training_args":
+                continue
+            mlflow.log_param(f"train.{key}", value)
+        for key, value in training_args_cfg.items():
+            mlflow.log_param(f"train.training_args.{key}", value)
 
         hydra_cfg = HydraConfig.get()
         hydra_output_dir = Path(hydra_cfg.runtime.output_dir)
@@ -262,25 +317,31 @@ def main(cfg: DictConfig) -> None:
             processor=processor,
         )
 
+        fast_dev_run = train_cfg.get("fast_dev_run", False)
+        max_train_samples = train_cfg.get("max_train_samples")
+        max_eval_samples = train_cfg.get("max_eval_samples")
+        max_test_samples = train_cfg.get("max_test_samples")
+
+        if fast_dev_run:
+            if max_train_samples is None:
+                max_train_samples = batch_size * 2
+            if max_eval_samples is None:
+                max_eval_samples = batch_size * 2
+            if max_test_samples is None:
+                max_test_samples = batch_size * 2
+
+        train_dataset = maybe_subset(train_dataset, max_train_samples)
+        val_dataset = maybe_subset(val_dataset, max_eval_samples)
+        test_dataset = maybe_subset(test_dataset, max_test_samples)
+
         use_mps = device == "mps"
         use_cpu = device == "cpu"
+
         training_args = TrainingArguments(
             output_dir=str(output_dir),
-            num_train_epochs=epochs,
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            learning_rate=lr,
-            weight_decay=weight_decay,
-            eval_strategy="epoch",
-            save_strategy="epoch",
-            logging_strategy="epoch",
-            remove_unused_columns=False,
-            seed=seed,
-            dataloader_drop_last=False,
-            run_name=run_name,
             use_cpu=use_cpu,
             use_mps_device=use_mps,
-            report_to=[],
+            **training_args_cfg,
         )
 
         trainer = Trainer(
@@ -291,7 +352,9 @@ def main(cfg: DictConfig) -> None:
             eval_dataset=val_dataset,
             tokenizer=processor,
             compute_metrics=build_compute_metrics(
-                processor, score_threshold, iou_threshold
+                processor,
+                train_cfg.get("score_threshold", 0.5),
+                train_cfg.get("iou_threshold", 0.5),
             ),
             callbacks=[MLflowCallback()],
         )
