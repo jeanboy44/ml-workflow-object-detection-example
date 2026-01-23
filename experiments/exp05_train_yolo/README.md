@@ -31,17 +31,7 @@ uv run experiments/exp05_train_yolo/train_yolo.py \
   --fraction 0.01
 ```
 
-### 1) 파인튜닝
-```sh
-uv run experiments/exp05_train_yolo/train_yolo.py \
-  --data-yaml data/pcb_yolo/data.yaml \
-  --model artifacts/yolo/yolo26n.pt \
-  --epochs 50 \
-  --imgsz 640 \
-  --batch 16
-```
-
-### 2) Transfer Learning (Freeze Backbone)
+### 1) Transfer Learning (Freeze Backbone)
 ```sh
 uv run experiments/exp05_train_yolo/train_yolo.py \
   --data-yaml data/pcb_yolo/data.yaml \
@@ -52,7 +42,7 @@ uv run experiments/exp05_train_yolo/train_yolo.py \
   --batch 16
 ```
 
-### 3) From Scratch
+### 2) From Scratch
 ```sh
 uv run experiments/exp05_train_yolo/train_yolo.py \
   --data-yaml data/pcb_yolo/data.yaml \
@@ -62,7 +52,7 @@ uv run experiments/exp05_train_yolo/train_yolo.py \
   --batch 16
 ```
 
-### 4) 작은 박스 대응 (고해상도)
+### 3) 작은 박스 대응 (고해상도)
 ```sh
 uv run experiments/exp05_train_yolo/train_yolo.py \
   --data-yaml data/pcb_yolo/data.yaml \
@@ -70,15 +60,6 @@ uv run experiments/exp05_train_yolo/train_yolo.py \
   --epochs 10 \
   --imgsz 960 \
   --batch 8
-```
-
-```sh
-uv run experiments/exp05_train_yolo/train_yolo.py \
-  --data-yaml data/pcb_yolo/data.yaml \
-  --model artifacts/yolo/yolo26n.pt \
-  --epochs 10 \
-  --imgsz 1280 \
-  --batch 16
 ```
 
 ```sh

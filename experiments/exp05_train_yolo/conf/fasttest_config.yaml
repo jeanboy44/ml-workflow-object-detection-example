@@ -18,5 +18,5 @@ train:
 
 mlflow:
   tracking_uri: databricks
-  experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp05_train_yolo
+  experiment_name: /Shared/Experiments/exp05_train_yolo
   run_name: null
