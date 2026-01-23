@@ -1,0 +1,18 @@
+train:
+  data_dir: data/pcb_splits
+  output_dir: artifacts/exp06/detr_finetune
+  pretrained: true
+  epochs: 10
+  batch_size: 4
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  seed: 42
+  device: cpu
+  score_threshold: 0.5
+  iou_threshold: 0.5
+  freeze_backbone: false
+
+mlflow:
+  tracking_uri: databricks
+  experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp06_train_detr
+  run_name: null

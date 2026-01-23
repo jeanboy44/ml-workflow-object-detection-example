@@ -77,27 +77,46 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def copy_item(
+def normalize_label(label: str) -> str:
+    return label.strip().replace("_", " ").title().replace(" ", "_")
+
+
+def copy_item_voc(
     item: AnnotationItem,
     images_dir: Path,
-    output_dir: Path,
+    voc_root: Path,
     split: str,
-) -> tuple[Path, Path]:
-    filename, _ = parse_annotation(item.xml_path)
+) -> tuple[Path, Path, str]:
+    filename, labels = parse_annotation(item.xml_path)
     image_path = images_dir / item.class_name / filename
     if not image_path.exists():
         raise FileNotFoundError(f"[ERROR] Missing image file: {image_path}")
 
-    ann_out_dir = output_dir / "annotations" / split / item.class_name
-    img_out_dir = output_dir / "images" / split / item.class_name
-    ensure_dir(ann_out_dir)
+    img_out_dir = voc_root / "JPEGImages"
+    ann_out_dir = voc_root / "Annotations"
     ensure_dir(img_out_dir)
+    ensure_dir(ann_out_dir)
 
-    ann_output = ann_out_dir / item.xml_path.name
-    img_output = img_out_dir / image_path.name
-    shutil.copy2(item.xml_path, ann_output)
+    base_name = image_path.stem
+    unique_name = f"{item.class_name}_{base_name}"
+    img_output = img_out_dir / f"{unique_name}{image_path.suffix}"
+    ann_output = ann_out_dir / f"{unique_name}.xml"
+
     shutil.copy2(image_path, img_output)
-    return img_output, ann_output
+
+    tree = ET.parse(item.xml_path)
+    root = tree.getroot()
+    filename_elem = root.find("filename")
+    if filename_elem is not None:
+        filename_elem.text = img_output.name
+
+    for obj in root.findall("object"):
+        name_elem = obj.find("name")
+        if name_elem is not None:
+            name_elem.text = normalize_label(name_elem.text)
+
+    tree.write(ann_output, encoding="utf-8", xml_declaration=True)
+    return img_output, ann_output, unique_name
 
 
 def write_manifest(rows: list[dict[str, str]], output_dir: Path) -> None:
@@ -143,16 +162,31 @@ def main(
         raise ValueError("[ERROR] No annotation files found.")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create VOC2012 subdirectory for torchvision.datasets.VOCDetection compatibility
+    voc_root = output_dir / "VOC2012"
+    voc_root.mkdir(parents=True, exist_ok=True)
+
     class_names = sorted({item.class_name for item in items})
-    (output_dir / "classes.txt").write_text("\n".join(class_names) + "\n")
-    print(f"[INFO] Classes saved: {output_dir / 'classes.txt'}")
+    (voc_root / "classes.txt").write_text("\n".join(class_names) + "\n")
+    print(f"[INFO] Classes saved: {voc_root / 'classes.txt'}")
 
     split_map = split_items(items, train_ratio, val_ratio, test_ratio, seed)
     manifest_rows: list[dict[str, str]] = []
+    imagesets_dir = voc_root / "ImageSets" / "Main"
+    ensure_dir(imagesets_dir)
+
+    split_files = {
+        "train": (imagesets_dir / "train.txt").open("w"),
+        "val": (imagesets_dir / "val.txt").open("w"),
+        "test": (imagesets_dir / "test.txt").open("w"),
+    }
 
     for split, split_items_list in split_map.items():
         for item in split_items_list:
-            img_output, ann_output = copy_item(item, images_dir, output_dir, split)
+            img_output, ann_output, unique_name = copy_item_voc(
+                item, images_dir, voc_root, split
+            )
             manifest_rows.append(
                 {
                     "split": split,
@@ -161,9 +195,14 @@ def main(
                     "annotation_path": str(ann_output),
                 }
             )
+            split_files[split].write(unique_name + "\n")
 
-    write_manifest(manifest_rows, output_dir)
-    print(f"[INFO] Done. Output: {output_dir}")
+    for f in split_files.values():
+        f.close()
+
+    write_manifest(manifest_rows, voc_root)
+    print(f"[INFO] VOC-format dataset saved: {voc_root}")
+    print(f"[INFO] ImageSets: {imagesets_dir}")
 
 
 if __name__ == "__main__":

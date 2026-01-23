@@ -1,50 +1,37 @@
 # Exp06: DETR Training
 
-DETR 학습/평가 실험을 정리합니다. 데이터 분할은 `exp05_train_yolo`의 스크립트를 사용합니다.
+PCB 결함 데이터셋을 대상으로 DETR 학습 파이프라인을 구성하고, 파인튜닝/스크래치 학습을 실험합니다. 데이터 분할은 `exp05_train_yolo`의 스크립트를 사용합니다.
 
-## 1) 데이터 분할 (train/val/test)
+## 사전 준비
+
+### 1) 데이터 분할 (train/val/test)
 ```sh
-uv run experiments/exp05_train_yolo/split_pcb_dataset.py \
-  --base-dir data/PCB_DATASET \
-  --output-dir data/pcb_splits \
-  --train-ratio 0.8 \
-  --val-ratio 0.1 \
-  --test-ratio 0.1 \
-  --seed 42
+uv run experiments/exp05_train_yolo/split_pcb_dataset.py --base-dir data/PCB_DATASET --output-dir data/pcb_splits
 ```
 
-## 2) DETR 파인튜닝
+## 실험
+
+### 1) DETR 파인튜닝
 ```sh
-uv run experiments/exp06_train_detr/train_detr.py \
-  --data-dir data/pcb_splits \
-  --output-dir artifacts/exp06/detr_finetune \
-  --pretrained \
-  --epochs 10 \
-  --batch-size 4
+uv run experiments/exp06_train_detr/train_detr_hydra.py
 ```
 
-### DETR Transfer Learning (Backbone Freeze)
+### 2) Transfer Learning (Backbone Freeze)
 ```sh
-uv run experiments/exp06_train_detr/train_detr.py \
-  --data-dir data/pcb_splits \
-  --output-dir artifacts/exp06/detr_transfer \
-  --pretrained \
-  --freeze-backbone \
-  --epochs 10 \
-  --batch-size 4
+uv run experiments/exp06_train_detr/train_detr_hydra.py train.freeze_backbone=true
 ```
 
-## 3) 처음부터 학습 (from scratch)
+### 3) From Scratch
 ```sh
-uv run experiments/exp06_train_detr/train_detr.py \
-  --data-dir data/pcb_splits \
-  --output-dir artifacts/exp06/detr_from_scratch \
-  --no-pretrained \
-  --epochs 20 \
-  --batch-size 4
+uv run experiments/exp06_train_detr/train_detr_hydra.py train.pretrained=false train.epochs=20
 ```
 
-## 4) MLflow Tracking (Databricks)
+### 4) 고해상도 학습 (더 많은 epoch)
+```sh
+uv run experiments/exp06_train_detr/train_detr_hydra.py train.epochs=20 train.batch_size=2 train.lr=5e-5
+```
+
+## MLflow Tracking (Databricks)
 ```sh
 export MLFLOW_TRACKING_URI=databricks
 ```
