@@ -133,8 +133,6 @@ def main(
     settings.update({"mlflow": False})
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
-    if registry_uri:
-        mlflow.set_registry_uri(registry_uri)
     mlflow.set_experiment(experiment_name)
 
     if from_scratch:
