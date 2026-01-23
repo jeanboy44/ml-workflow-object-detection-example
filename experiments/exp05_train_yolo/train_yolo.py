@@ -3,6 +3,7 @@ Train YOLO on the PCB dataset (fine-tune or from scratch).
 
 Example:
     uv run experiments/exp05/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt
+    uv run experiments/exp05_train_yolo/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt --epochs 1 --imgsz 320 --batch 2 --fraction 0.01 --val false --save false --plots false
 """
 
 from __future__ import annotations
@@ -59,6 +60,25 @@ def register_callbacks(yolo_model: YOLO) -> None:
     yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
 
+def log_best_model(save_dir: Path, registered_model_name: str | None) -> None:
+    best_path = save_dir / "weights" / "best.pt"
+    last_path = save_dir / "weights" / "last.pt"
+    model_path = best_path if best_path.exists() else last_path
+    if not model_path.exists():
+        print(f"[WARN] No model checkpoint found in {save_dir}")
+        return
+    print(f"[INFO] Registering model from {model_path}")
+    if registered_model_name:
+        print(f"[INFO] MLflow registered_model_name={registered_model_name}")
+    best_model = YOLO(str(model_path))
+    mlflow.pytorch.log_model(
+        best_model.model,
+        artifact_path="best_model",
+        registered_model_name=registered_model_name,
+    )
+    print("[INFO] Model registration complete")
+
+
 @app.command()
 def main(
     data_yaml: Path = typer.Option(..., help="Path to YOLO data.yaml"),
@@ -72,19 +92,28 @@ def main(
     name: str | None = typer.Option(None, help="YOLO run name"),
     tracking_uri: str | None = typer.Option("databricks", help="MLflow tracking URI"),
     experiment_name: str = typer.Option(
-        "/Shared/Experiments/ml-workflow-object-detection-example/exp05_train_yolo",
+        "/Shared/Experiments/exp05_train_yolo",
         help="MLflow experiment name",
     ),
     run_name: str | None = typer.Option(None, help="MLflow run name"),
+    registry_uri: str | None = typer.Option(
+        "databricks-uc", help="MLflow registry URI"
+    ),
+    catalog: str = typer.Option("study", help="Unity Catalog name"),
+    schema: str = typer.Option("object_detection", help="Unity schema name"),
+    model_name: str = typer.Option("yolo_best", help="Registered model name"),
     freeze_backbone: int = typer.Option(
         0, help="Freeze backbone layers for transfer learning"
     ),
+    fraction: float = typer.Option(1.0, help="Fraction of training data to use"),
 ):
     """Train YOLO with MLflow tracking."""
     load_dotenv()
     settings.update({"mlflow": False})
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
+    if registry_uri:
+        mlflow.set_registry_uri(registry_uri)
     mlflow.set_experiment(experiment_name)
 
     if from_scratch:
@@ -111,6 +140,7 @@ def main(
             }
         )
 
+        print("[INFO] Starting YOLO training")
         yolo_model = YOLO(model_path)
         register_callbacks(yolo_model)
         yolo_model.train(
@@ -123,7 +153,13 @@ def main(
             name=yolo_run_name,
             exist_ok=True,
             freeze=freeze_backbone,
+            fraction=fraction,
         )
+        print("[INFO] YOLO training complete")
+
+        registered_model_name = f"{catalog}.{schema}.{model_name}"
+        print(f"[INFO] Looking for checkpoints in {Path(project) / yolo_run_name}")
+        log_best_model(Path(project) / yolo_run_name, registered_model_name)
 
         results_csv = Path(project) / yolo_run_name / "results.csv"
         train_metrics = read_last_metrics(results_csv)

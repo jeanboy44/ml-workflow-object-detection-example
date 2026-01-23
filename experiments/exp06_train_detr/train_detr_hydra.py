@@ -238,8 +238,14 @@ def main(cfg: DictConfig) -> None:
         "/Shared/Experiments/ml-workflow-object-detection-example/exp06_train_detr",
     )
     run_name = mlflow_cfg.get("run_name")
+    registry_uri = mlflow_cfg.get("registry_uri")
+    catalog = mlflow_cfg.get("catalog")
+    schema = mlflow_cfg.get("schema")
+    model_name = mlflow_cfg.get("model_name")
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
+    if registry_uri:
+        mlflow.set_registry_uri(registry_uri)
     mlflow.set_experiment(experiment_name)
 
     train_cfg = OmegaConf.to_container(cfg.get("train", {}), resolve=True) or {}
@@ -360,6 +366,20 @@ def main(cfg: DictConfig) -> None:
         )
 
         trainer.train()
+
+        best_model_path = trainer.state.best_model_checkpoint
+        if best_model_path:
+            best_model = DetrForObjectDetection.from_pretrained(best_model_path)
+        else:
+            best_model = trainer.model
+        registered_model_name = None
+        if catalog and schema and model_name:
+            registered_model_name = f"{catalog}.{schema}.{model_name}"
+        mlflow.pytorch.log_model(
+            best_model,
+            artifact_path="best_model",
+            registered_model_name=registered_model_name,
+        )
         trainer.save_model(str(output_dir))
         processor.save_pretrained(str(output_dir))
 
