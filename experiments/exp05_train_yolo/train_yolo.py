@@ -52,14 +52,11 @@ def _epoch_metrics(metrics: dict[str, Any]) -> dict[str, float]:
     return clean
 
 
-def register_callbacks(yolo_model: YOLO) -> None:
-    def on_fit_epoch_end(trainer) -> None:
-        metrics = _epoch_metrics(getattr(trainer, "metrics", {}))
-        epoch = int(getattr(trainer, "epoch", 0))
-        for key, value in metrics.items():
-            mlflow.log_metric(f"epoch/{key}", value, step=epoch)
-
-    yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
+def on_fit_epoch_end(trainer) -> None:
+    metrics = _epoch_metrics(getattr(trainer, "metrics", {}))
+    epoch = int(getattr(trainer, "epoch", 0))
+    for key, value in metrics.items():
+        mlflow.log_metric(f"epoch/{key}", value, step=epoch)
 
 
 def build_signature(yolo_model: YOLO, imgsz: int) -> tuple[Any, Any]:
@@ -159,7 +156,7 @@ def main(
 
         print("[INFO] Starting YOLO training")
         yolo_model = YOLO(model_path)
-        register_callbacks(yolo_model)
+        yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
         yolo_model.train(
             data=str(data_yaml),
             epochs=epochs,
