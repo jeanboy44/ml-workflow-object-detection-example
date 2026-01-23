@@ -317,15 +317,6 @@ def build_compute_metrics(
     return _compute_metrics
 
 
-def resolve_split(dataset_dict, primary: str, fallback: str | None = None):
-    """Resolve dataset split by primary name or fallback."""
-    if primary in dataset_dict:
-        return dataset_dict[primary]
-    if fallback and fallback in dataset_dict:
-        return dataset_dict[fallback]
-    raise KeyError(f"[ERROR] Missing {primary} split in dataset.")
-
-
 @hydra.main(version_base=None, config_path="conf", config_name="default_config")
 def main(cfg: DictConfig) -> None:
     load_dotenv()
@@ -349,6 +340,13 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.set_readonly(cfg.mlflow, True)
 
     mlflow_cfg = cfg.mlflow
+
+    if mlflow_cfg.model_name:
+        parts = mlflow_cfg.model_name.split(".")
+        if len(parts) != 3:
+            raise ValueError(
+                "mlflow.model_name should be in {catalog}.{schema}.{model} format"
+            )
 
     train_cfg = OmegaConf.to_container(cfg.train, resolve=True) or {}
     data_dir = Path(train_cfg["data_dir"])
@@ -407,9 +405,9 @@ def main(cfg: DictConfig) -> None:
                 mlflow.log_artifact(str(yaml_file), artifact_path="hydra")
 
         dataset_dict = load_dataset("imagefolder", data_dir=str(data_dir))
-        train_split = resolve_split(dataset_dict, "train")
-        val_split = resolve_split(dataset_dict, "val", "validation")
-        test_split = resolve_split(dataset_dict, "test")
+        train_split = dataset_dict["train"]
+        val_split = dataset_dict["validation"]
+        test_split = dataset_dict["test"]
 
         transform = transform_for_detr(processor)
         train_dataset = train_split.with_transform(transform)
@@ -445,21 +443,12 @@ def main(cfg: DictConfig) -> None:
         else:
             best_model = trainer.model
 
-        registered_model_name = None
-        if mlflow_cfg.model_name:
-            parts = mlflow_cfg.model_name.split(".")
-            if len(parts) != 3:
-                raise ValueError(
-                    "mlflow.model_name should be in {catalog}.{schema}.{model} format"
-                )
-            registered_model_name = mlflow_cfg.model_name
-
         image_size = resolve_image_size(train_cfg, processor)
         signature, input_example = build_signature(best_model, image_size)
         mlflow.pytorch.log_model(
             best_model,
             artifact_path="best_model",
-            registered_model_name=registered_model_name,
+            registered_model_name=mlflow_cfg.model_name,
             signature=signature,
             input_example=input_example,
         )
