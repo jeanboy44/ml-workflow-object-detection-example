@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import hydra
 import mlflow
@@ -18,7 +19,7 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import MISSING, DictConfig, OmegaConf
 from torch.utils.data import Dataset, Subset
 from torchvision.datasets import CocoDetection
 from transformers import (
@@ -30,6 +31,59 @@ from transformers import (
 )
 from transformers.integrations import MLflowCallback
 from transformers.models.detr.modeling_detr import DetrObjectDetectionOutput
+
+
+@dataclass
+class TrainingArgsConfig:
+    num_train_epochs: int = MISSING
+    per_device_train_batch_size: int = MISSING
+    per_device_eval_batch_size: int = MISSING
+    learning_rate: float = MISSING
+    weight_decay: float = MISSING
+    eval_strategy: str = MISSING
+    logging_strategy: str = MISSING
+    save_strategy: str = MISSING
+    remove_unused_columns: bool = False
+    label_names: list[str] = field(default_factory=lambda: ["labels"])
+    dataloader_drop_last: bool = False
+    seed: int = MISSING
+    report_to: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TrainConfig:
+    data_dir: str = MISSING
+    output_dir: str = MISSING
+    pretrained: bool = True
+    seed: int = MISSING
+    device: str = MISSING
+    score_threshold: float = 0.5
+    iou_threshold: float = 0.5
+    freeze_backbone: bool = False
+    model_path: Optional[str] = None
+    image_size: Optional[int] = None
+    fast_dev_run: bool = False
+    max_steps: Optional[int] = None
+    max_train_samples: Optional[int] = None
+    max_eval_samples: Optional[int] = None
+    max_test_samples: Optional[int] = None
+    training_args: TrainingArgsConfig = field(default_factory=TrainingArgsConfig)
+
+
+@dataclass
+class MlflowConfig:
+    tracking_uri: Optional[str] = "databricks"
+    catalog: Optional[str] = None
+    schema: Optional[str] = None
+    model_name: Optional[str] = None
+    experiment_name: str = MISSING
+    run_name: Optional[str] = None
+
+
+@dataclass
+class AppConfig:
+    train: TrainConfig = field(default_factory=TrainConfig)
+    mlflow: MlflowConfig = field(default_factory=MlflowConfig)
 
 
 def build_model(
@@ -230,13 +284,36 @@ def maybe_subset(dataset: Dataset, max_samples: int | None) -> Dataset:
 @hydra.main(version_base=None, config_path="conf", config_name="default_config")
 def main(cfg: DictConfig) -> None:
     load_dotenv()
+    schema = OmegaConf.structured(AppConfig)
+    OmegaConf.set_struct(schema, False)
+    OmegaConf.set_struct(schema.train, False)
+    OmegaConf.set_struct(schema.mlflow, False)
+    cfg = OmegaConf.merge(schema, cfg)
+
+    try:
+        OmegaConf.to_container(
+            cfg,
+            resolve=True,
+            throw_on_missing=True,
+        )
+    except Exception as exc:
+        print(f"[ERROR] Config validation failed: {exc}")
+        return
+
+    if cfg.mlflow.model_name and not (cfg.mlflow.catalog and cfg.mlflow.schema):
+        raise ValueError(
+            "mlflow.model_name requires mlflow.catalog and mlflow.schema values"
+        )
+
+    OmegaConf.set_readonly(cfg.train, True)
+    OmegaConf.set_readonly(cfg.mlflow, True)
 
     mlflow_cfg = cfg.mlflow
     if mlflow_cfg.tracking_uri:
         mlflow.set_tracking_uri(mlflow_cfg.tracking_uri)
     mlflow.set_experiment(mlflow_cfg.experiment_name)
 
-    train_cfg = OmegaConf.to_container(cfg.get("train", {}), resolve=True) or {}
+    train_cfg = OmegaConf.to_container(cfg.train, resolve=True) or {}
     data_dir = Path(train_cfg["data_dir"])
     output_dir = Path(train_cfg["output_dir"])
     seed = train_cfg["seed"]

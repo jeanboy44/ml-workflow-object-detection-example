@@ -10,10 +10,7 @@ train:
   exist_ok: true
   freeze: 0
   mosaic: 0.0
-  val: false
   fraction: 0.01
-  save: false
-  plots: false
 
 mlflow:
   tracking_uri: databricks
