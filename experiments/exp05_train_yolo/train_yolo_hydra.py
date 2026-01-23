@@ -29,7 +29,7 @@ def register_callbacks(yolo_model: YOLO) -> None:
     yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="conf", config_name="default_config")
 def main(cfg: DictConfig) -> None:
     load_dotenv()
     settings.update({"mlflow": False})

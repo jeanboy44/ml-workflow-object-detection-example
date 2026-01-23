@@ -1,12 +1,12 @@
 train:
-  data: data/pcb_yolo/data.yaml
-  model: artifacts/yolo/yolo26n.pt
+  data: data/pcb_yolo/data.yaml  # required
+  model: artifacts/yolo/yolo26n.pt  # required
   from_scratch: false
-  epochs: 50
-  imgsz: 640
-  batch: 16
+  epochs: 50  # required
+  imgsz: 640  # required
+  batch: 16  # required
   device: null
-  project: runs/exp05
+  project: runs/exp05  # required
   name: null
   exist_ok: true
   freeze: 0

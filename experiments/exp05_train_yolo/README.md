@@ -75,9 +75,14 @@ uv run experiments/e03_eda_pcb_data.py
 ```
 
 ### 5) Hydra 기반 학습 (Mosaic 증강 조절)
-기본 실행 (config.yaml 사용):
+기본 실행 (default_config.yaml 사용):
 ```sh
 uv run experiments/exp05_train_yolo/train_yolo_hydra.py
+```
+
+Fast test:
+```sh
+uv run experiments/exp05_train_yolo/train_yolo_hydra.py --config-name fasttest_config
 ```
 
 Mosaic 증강:
