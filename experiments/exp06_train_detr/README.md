@@ -11,14 +11,14 @@ uv run experiments/exp06_train_detr/split_pcb_dataset_coco.py --base-dir data/PC
 
 ## 실험
 
-### 1) DETR 파인튜닝 (기본)
-```sh
-uv run experiments/exp06_train_detr/train_detr_hydra.py
-```
-
-### 2) Fast test (1 step)
+### 1) Fast test (1 step)
 ```sh
 uv run experiments/exp06_train_detr/train_detr_hydra.py --config-name fasttest_config
+```
+
+### 2) DETR 파인튜닝 (기본)
+```sh
+uv run experiments/exp06_train_detr/train_detr_hydra.py
 ```
 
 ### 3) Transfer Learning (Backbone Freeze)

@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
+from mlflow.models import infer_signature
 from omegaconf import MISSING, DictConfig, OmegaConf
 from torch.utils.data import Dataset, Subset
 from torchvision.datasets import CocoDetection
@@ -43,6 +44,9 @@ class TrainingArgsConfig:
     eval_strategy: str = MISSING
     logging_strategy: str = MISSING
     save_strategy: str = MISSING
+    eval_steps: Optional[int] = None
+    logging_steps: Optional[int] = None
+    max_steps: Optional[int] = None
     remove_unused_columns: bool = False
     label_names: list[str] = field(default_factory=lambda: ["labels"])
     dataloader_drop_last: bool = False
@@ -115,6 +119,37 @@ def build_model(
         for param in model.model.backbone.parameters():
             param.requires_grad = False
     return model
+
+
+def resolve_image_size(train_cfg: dict[str, Any], processor: DetrImageProcessor) -> int:
+    if train_cfg.get("image_size"):
+        return int(train_cfg["image_size"])
+    size = getattr(processor, "size", None)
+    if isinstance(size, dict):
+        return int(size.get("shortest_edge") or size.get("max_size") or 800)
+    if isinstance(size, int):
+        return size
+    return 800
+
+
+def build_signature(
+    model: DetrForObjectDetection,
+    image_size: int,
+) -> tuple[Any, dict[str, np.ndarray]]:
+    pixel_values = torch.zeros((1, 3, image_size, image_size), dtype=torch.float32)
+    pixel_mask = torch.ones((1, image_size, image_size), dtype=torch.int64)
+    input_example = {
+        "pixel_values": pixel_values.cpu().numpy(),
+        "pixel_mask": pixel_mask.cpu().numpy(),
+    }
+    with torch.no_grad():
+        outputs = model(pixel_values=pixel_values, pixel_mask=pixel_mask)
+    output_example = {
+        "logits": outputs.logits.detach().cpu().numpy(),
+        "pred_boxes": outputs.pred_boxes.detach().cpu().numpy(),
+    }
+    signature = infer_signature(input_example, output_example)
+    return signature, input_example
 
 
 def box_iou(box: torch.Tensor, boxes: torch.Tensor) -> torch.Tensor:
@@ -300,10 +335,12 @@ def main(cfg: DictConfig) -> None:
         print(f"[ERROR] Config validation failed: {exc}")
         return
 
-    if cfg.mlflow.model_name and not (cfg.mlflow.catalog and cfg.mlflow.schema):
-        raise ValueError(
-            "mlflow.model_name requires mlflow.catalog and mlflow.schema values"
-        )
+    if cfg.mlflow.model_name:
+        parts = cfg.mlflow.model_name.split(".")
+        if len(parts) != 3:
+            raise ValueError(
+                "mlflow.model_name should be in {catalog}.{schema}.{model} format"
+            )
 
     OmegaConf.set_readonly(cfg.train, True)
     OmegaConf.set_readonly(cfg.mlflow, True)
@@ -440,14 +477,21 @@ def main(cfg: DictConfig) -> None:
         else:
             best_model = trainer.model
         registered_model_name = None
-        if mlflow_cfg.catalog and mlflow_cfg.schema and mlflow_cfg.model_name:
-            registered_model_name = (
-                f"{mlflow_cfg.catalog}.{mlflow_cfg.schema}.{mlflow_cfg.model_name}"
-            )
+        if mlflow_cfg.model_name:
+            parts = mlflow_cfg.model_name.split(".")
+            if len(parts) != 3:
+                raise ValueError(
+                    "mlflow.model_name should be in {catalog}.{schema}.{model} format"
+                )
+            registered_model_name = mlflow_cfg.model_name
+        image_size = resolve_image_size(train_cfg, processor)
+        signature, input_example = build_signature(best_model, image_size)
         mlflow.pytorch.log_model(
             best_model,
             artifact_path="best_model",
             registered_model_name=registered_model_name,
+            signature=signature,
+            input_example=input_example,
         )
         trainer.save_model(str(output_dir))
         processor.save_pretrained(str(output_dir))

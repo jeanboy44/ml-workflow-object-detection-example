@@ -34,6 +34,6 @@ train:
 
 mlflow:
   tracking_uri: databricks
-  experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp06_train_detr
+  experiment_name: /Shared/Experiments/exp06_train_detr
   run_name: null
-  model_name: study.object_detection.yolo01 # {catalog}.{schema}.{model} format
+  model_name: study.object_detection.detr01 # {catalog}.{schema}.{model} format
