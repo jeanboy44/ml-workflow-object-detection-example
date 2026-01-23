@@ -1,13 +1,12 @@
 train:
   data: data/pcb_yolo/data.yaml  # required
   model: artifacts/yolo/yolo26n.pt  # required
-  from_scratch: false
   epochs: 50  # required
   imgsz: 640  # required
   batch: 16  # required
   device: null
   project: runs/exp05  # required
-  name: null
+  name: yolo_finetune01 # required
   exist_ok: true
   freeze: 0
   mosaic: 0.0
@@ -15,4 +14,5 @@ train:
 mlflow:
   tracking_uri: databricks
   experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp05_train_yolo
-  run_name: null
+  run_name: yolo_finetune01
+  model_name: study.object_detection.yolo01 # {catalog}.{schema}.{model} format

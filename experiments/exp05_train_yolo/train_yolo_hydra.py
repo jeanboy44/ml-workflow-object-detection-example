@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, cast
 
 import hydra
 import mlflow
@@ -9,8 +10,37 @@ import numpy as np
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from mlflow.models import infer_signature
-from omegaconf import DictConfig
+from omegaconf import MISSING, DictConfig, OmegaConf
 from ultralytics import YOLO, settings
+
+
+@dataclass
+class TrainConfig:
+    data: str = MISSING
+    model: str = MISSING
+    project: str = MISSING
+    name: str = MISSING
+    epochs: int = MISSING
+    imgsz: int = MISSING
+    batch: int = MISSING
+    device: Optional[str] = None
+    exist_ok: bool = True
+    freeze: int = 0
+    mosaic: float = 0.0
+
+
+@dataclass
+class MlflowConfig:
+    tracking_uri: Optional[str] = "databricks"
+    experiment_name: str = MISSING
+    run_name: Optional[str] = None
+    model_name: Optional[str] = None
+
+
+@dataclass
+class AppConfig:
+    train: TrainConfig = field(default_factory=TrainConfig)
+    mlflow: MlflowConfig = field(default_factory=MlflowConfig)
 
 
 def _epoch_metrics(metrics: dict[str, Any]) -> dict[str, float]:
@@ -67,41 +97,42 @@ def log_best_model(
 
 @hydra.main(version_base=None, config_path="conf", config_name="default_config")
 def main(cfg: DictConfig) -> None:
+    # argument parsing and config validation
     load_dotenv()
-    settings.update({"mlflow": False})
+    schema = OmegaConf.structured(AppConfig)
+    OmegaConf.set_struct(schema, False)
+    OmegaConf.set_struct(schema.train, False)
+    OmegaConf.set_struct(schema.mlflow, False)
+    cfg = OmegaConf.merge(schema, cfg)
 
-    mlflow_cfg = cfg.get("mlflow", {})
-    tracking_uri = mlflow_cfg.get("tracking_uri")
-    experiment_name = mlflow_cfg.get(
-        "experiment_name",
-        "/Shared/Experiments/exp05_train_yolo",
-    )
-    run_name = mlflow_cfg.get("run_name")
-    registry_uri = mlflow_cfg.get("registry_uri")
-    catalog = mlflow_cfg.get("catalog")
-    schema = mlflow_cfg.get("schema")
-    model_name = mlflow_cfg.get("model_name")
-    if tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
-    if registry_uri:
-        mlflow.set_registry_uri(registry_uri)
-    mlflow.set_experiment(experiment_name)
-
-    train_cfg = dict(cfg.get("train", {}))
-    from_scratch = bool(train_cfg.pop("from_scratch", False))
-    model_path = train_cfg.get("model")
-    default_name = "yolo_from_scratch" if from_scratch else "yolo_finetune"
-    if not model_path:
-        train_cfg["model"] = (
-            "yolov8n.yaml" if from_scratch else "artifacts/yolo/yolo26n.pt"
+    try:
+        final_config = OmegaConf.to_container(
+            cfg,
+            resolve=True,
+            throw_on_missing=True,
         )
-    if "name" not in train_cfg or train_cfg["name"] is None:
-        train_cfg["name"] = default_name
-    if run_name is None:
-        run_name = default_name
+    except Exception as exc:
+        print(f"[ERROR] Config validation failed: {exc}")
+        return
 
-    with mlflow.start_run(run_name=run_name):
-        mlflow.log_params(dict(cfg))
+    if cfg.mlflow.model_name:
+        # check if model_name is in {catalog}.{schema}.{model} format
+        parts = cfg.mlflow.model_name.split(".")
+        if len(parts) != 3:
+            raise ValueError(
+                "mlflow.model_name should be in {catalog}.{schema}.{model} format"
+            )
+
+    OmegaConf.set_readonly(cfg.train, True)
+    OmegaConf.set_readonly(cfg.mlflow, True)
+
+    # training with mlflow logging
+    settings.update({"mlflow": False})
+    mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
+    mlflow.set_experiment(cfg.mlflow.experiment_name)
+    with mlflow.start_run(run_name=cfg.mlflow.run_name):
+        if isinstance(final_config, dict):
+            mlflow.log_params(cast(dict[str, Any], final_config))
 
         hydra_cfg = HydraConfig.get()
         output_dir = Path(hydra_cfg.runtime.output_dir)
@@ -111,21 +142,17 @@ def main(cfg: DictConfig) -> None:
             for yaml_file in hydra_dir.glob("*.yaml"):
                 mlflow.log_artifact(str(yaml_file), artifact_path="hydra")
 
-        yolo_model = YOLO(train_cfg["model"])
+        yolo_model = YOLO(cfg.train.model)
         register_callbacks(yolo_model)
-        yolo_model.train(**train_cfg)
+        yolo_model.train(**OmegaConf.to_container(cfg.train, resolve=True))
 
-        registered_model_name = None
-        if catalog and schema and model_name:
-            registered_model_name = f"{catalog}.{schema}.{model_name}"
-        save_dir = getattr(getattr(yolo_model, "trainer", None), "save_dir", None)
-        if save_dir is None:
-            save_dir = Path(train_cfg.get("project", "runs/exp05")) / train_cfg["name"]
-        log_best_model(
-            Path(save_dir),
-            registered_model_name,
-            int(train_cfg.get("imgsz", 640)),
-        )
+        save_dir = Path("runs/detect") / cfg.train.project / cfg.train.name
+        if cfg.mlflow.model_name:
+            log_best_model(
+                Path(save_dir),
+                cfg.mlflow.model_name,
+                int(cfg.train.get("imgsz", 640)),
+            )
 
 
 if __name__ == "__main__":

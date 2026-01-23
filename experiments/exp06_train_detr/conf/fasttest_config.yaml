@@ -34,7 +34,6 @@ train:
 
 mlflow:
   tracking_uri: databricks
-  registry_uri: databricks-uc
   catalog: study
   schema: object_detection
   model_name: detr01

@@ -231,22 +231,10 @@ def maybe_subset(dataset: Dataset, max_samples: int | None) -> Dataset:
 def main(cfg: DictConfig) -> None:
     load_dotenv()
 
-    mlflow_cfg = cfg.get("mlflow", {})
-    tracking_uri = mlflow_cfg.get("tracking_uri")
-    experiment_name = mlflow_cfg.get(
-        "experiment_name",
-        "/Shared/Experiments/ml-workflow-object-detection-example/exp06_train_detr",
-    )
-    run_name = mlflow_cfg.get("run_name")
-    registry_uri = mlflow_cfg.get("registry_uri")
-    catalog = mlflow_cfg.get("catalog")
-    schema = mlflow_cfg.get("schema")
-    model_name = mlflow_cfg.get("model_name")
-    if tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
-    if registry_uri:
-        mlflow.set_registry_uri(registry_uri)
-    mlflow.set_experiment(experiment_name)
+    mlflow_cfg = cfg.mlflow
+    if mlflow_cfg.tracking_uri:
+        mlflow.set_tracking_uri(mlflow_cfg.tracking_uri)
+    mlflow.set_experiment(mlflow_cfg.experiment_name)
 
     train_cfg = OmegaConf.to_container(cfg.get("train", {}), resolve=True) or {}
     data_dir = Path(train_cfg["data_dir"])
@@ -287,8 +275,10 @@ def main(cfg: DictConfig) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     default_run_name = "detr_train"
-    if run_name is None:
+    if mlflow_cfg.run_name is None:
         run_name = default_run_name
+    else:
+        run_name = mlflow_cfg.run_name
 
     with mlflow.start_run(run_name=run_name):
         mlflow.log_text(OmegaConf.to_yaml(cfg), "hydra/config.yaml")
@@ -373,8 +363,10 @@ def main(cfg: DictConfig) -> None:
         else:
             best_model = trainer.model
         registered_model_name = None
-        if catalog and schema and model_name:
-            registered_model_name = f"{catalog}.{schema}.{model_name}"
+        if mlflow_cfg.catalog and mlflow_cfg.schema and mlflow_cfg.model_name:
+            registered_model_name = (
+                f"{mlflow_cfg.catalog}.{mlflow_cfg.schema}.{mlflow_cfg.model_name}"
+            )
         mlflow.pytorch.log_model(
             best_model,
             artifact_path="best_model",

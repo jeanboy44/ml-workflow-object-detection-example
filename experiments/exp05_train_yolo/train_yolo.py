@@ -117,9 +117,6 @@ def main(
         help="MLflow experiment name",
     ),
     run_name: str | None = typer.Option(None, help="MLflow run name"),
-    registry_uri: str | None = typer.Option(
-        "databricks-uc", help="MLflow registry URI"
-    ),
     catalog: str = typer.Option("study", help="Unity Catalog name"),
     schema: str = typer.Option("object_detection", help="Unity schema name"),
     model_name: str = typer.Option("yolo_best", help="Registered model name"),
