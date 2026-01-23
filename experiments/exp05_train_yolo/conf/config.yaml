@@ -1,0 +1,18 @@
+train:
+  data: data/pcb_yolo/data.yaml
+  model: artifacts/yolo/yolo26n.pt
+  from_scratch: false
+  epochs: 50
+  imgsz: 640
+  batch: 16
+  device: null
+  project: runs/exp05
+  name: null
+  exist_ok: true
+  freeze: 0
+  mosaic: 0.0
+
+mlflow:
+  tracking_uri: databricks
+  experiment_name: /Shared/Experiments/ml-workflow-object-detection-example/exp05_train_yolo
+  run_name: null

@@ -204,6 +204,11 @@ cython_debug/
 # MLflow
 mlruns/
 
+# Hydra
+outputs/
+.hydra/
+multirun/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
@@ -217,5 +222,3 @@ data/*
 
 artifacts/*
 !artifacts/.gitkeep
-
-data2/*
