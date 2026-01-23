@@ -3,7 +3,7 @@ Train YOLO on the PCB dataset (fine-tune or from scratch).
 
 Example:
     uv run experiments/exp05/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt
-    uv run experiments/exp05_train_yolo/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt --epochs 1 --imgsz 320 --batch 2 --fraction 0.01 --val false --save false --plots false
+    uv run experiments/exp05_train_yolo/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt --epochs 1 --imgsz 320 --batch 2 --fraction 0.01 --no-val --no-save --no-plots
 """
 
 from __future__ import annotations
@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import mlflow
+import numpy as np
 import typer
 from dotenv import load_dotenv
+from mlflow.models import infer_signature
 from ultralytics import YOLO, settings
 
 app = typer.Typer()
@@ -60,16 +62,40 @@ def register_callbacks(yolo_model: YOLO) -> None:
     yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
 
 
-def log_best_model(save_dir: Path, registered_model_name: str | None) -> None:
+def build_signature(yolo_model: YOLO, imgsz: int) -> tuple[Any, Any]:
+    input_example = np.zeros((imgsz, imgsz, 3), dtype=np.uint8)
+    results = yolo_model(input_example)
+    output_example = np.empty((0, 6), dtype=np.float32)
+    if results:
+        boxes = getattr(results[0], "boxes", None)
+        if boxes is not None and getattr(boxes, "data", None) is not None:
+            output_example = boxes.data.cpu().numpy()
+    signature = infer_signature(input_example, output_example)
+    return signature, input_example
+
+
+def log_best_model(
+    save_dir: Path,
+    registered_model_name: str | None,
+    imgsz: int,
+) -> None:
     best_path = save_dir / "weights" / "best.pt"
-    print(f"[INFO] Registering model from {best_path}")
+    last_path = save_dir / "weights" / "last.pt"
+    model_path = best_path if best_path.exists() else last_path
+    if not model_path.exists():
+        print(f"[WARN] No model checkpoint found in {save_dir}")
+        return
+    print(f"[INFO] Registering model from {model_path}")
     if registered_model_name:
         print(f"[INFO] MLflow registered_model_name={registered_model_name}")
-    best_model = YOLO(str(best_path))
+    best_model = YOLO(str(model_path))
+    signature, input_example = build_signature(best_model, imgsz)
     mlflow.pytorch.log_model(
         best_model.model,
-        name="best_model",
+        artifact_path="best_model",
         registered_model_name=registered_model_name,
+        signature=signature,
+        input_example=input_example,
     )
     print("[INFO] Model registration complete")
 
@@ -155,7 +181,7 @@ def main(
 
         registered_model_name = f"{catalog}.{schema}.{model_name}"
         print(f"[INFO] Looking for checkpoints in {yolo_log_dir}")
-        log_best_model(yolo_log_dir, registered_model_name)
+        log_best_model(yolo_log_dir, registered_model_name, imgsz)
 
         results_csv = yolo_log_dir / "results.csv"
         train_metrics = read_last_metrics(results_csv)
