@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import Any
 
 import mlflow
 import typer
 from dotenv import load_dotenv
-from ultralytics import YOLO
+from ultralytics import YOLO, settings
 
 app = typer.Typer()
 
@@ -40,6 +41,24 @@ def log_metrics(prefix: str, metrics: dict[str, float]) -> None:
         mlflow.log_metric(f"{prefix}{key}", value)
 
 
+def _epoch_metrics(metrics: dict[str, Any]) -> dict[str, float]:
+    clean: dict[str, float] = {}
+    for key, value in metrics.items():
+        if isinstance(value, (int, float)):
+            clean[key] = float(value)
+    return clean
+
+
+def register_callbacks(yolo_model: YOLO) -> None:
+    def on_fit_epoch_end(trainer) -> None:
+        metrics = _epoch_metrics(getattr(trainer, "metrics", {}))
+        epoch = int(getattr(trainer, "epoch", 0))
+        for key, value in metrics.items():
+            mlflow.log_metric(f"epoch/{key}", value, step=epoch)
+
+    yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
+
+
 @app.command()
 def main(
     data_yaml: Path = typer.Option(..., help="Path to YOLO data.yaml"),
@@ -63,6 +82,7 @@ def main(
 ):
     """Train YOLO with MLflow tracking."""
     load_dotenv()
+    settings.update({"mlflow": False})
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
@@ -92,12 +112,14 @@ def main(
         )
 
         yolo_model = YOLO(model_path)
+        register_callbacks(yolo_model)
         yolo_model.train(
             data=str(data_yaml),
             epochs=epochs,
             imgsz=imgsz,
             batch=batch,
             device=device,
+            project=project,
             name=yolo_run_name,
             exist_ok=True,
             freeze=freeze_backbone,
@@ -117,6 +139,8 @@ def main(
 
         if results_csv.exists():
             mlflow.log_artifact(str(results_csv))
+
+    print("[INFO] Training completed")
 
 
 if __name__ == "__main__":

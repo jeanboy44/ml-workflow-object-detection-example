@@ -7,7 +7,12 @@ authors = [
     { name = "Jingeol Ryu", email = "jgryu@ls-electric.com" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "loguru>=0.7.3",
+    "mlflow>=3.4.0",
+    "pillow>=12.1.0",
+    "ultralytics>=8.4.3",
+]
 
 [project.scripts]
 ml-object-detector = "ml_object_detector:main"

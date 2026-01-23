@@ -8,11 +8,13 @@ dependencies = [
     "fsspec>=2026.1.0",
     "kaggle>=1.8.3",
     "loguru>=0.7.3",
+    "onnxruntime>=1.23.2",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "ruff>=0.14.11",
     "typer>=0.21.1",
+    "ml_object_detector>=0.1.0",
 ]
 
 [dependency-groups]
@@ -20,6 +22,7 @@ experiments = [
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
     "mlflow>=3.4.0",
+    "onnx>=1.17.0",
     "pillow>=12.1.0",
     "polars>=1.37.1",
     "protobuf>=6.33.4",

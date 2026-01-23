@@ -10,7 +10,21 @@ uv pip install "git+https://github.com/jeanboy44/ml-workflow-object-detection-ex
 - uv 최신 버전 권장(≥0.9.25)
 
 ## ⚡️ 주요 기능
-- 객체 탐지 기능
+- MLflow에 등록된 모델 다운로드 및 예측
+
+## 🧩 사용 예시
+
+### MLflow Registry (YOLO)
+```python
+from ml_object_detector import load, load_image, predict
+
+model = load("models:/exp05_yolo/Production")
+image = load_image("sample.jpg")
+result = predict(model, image, threshold=0.25)
+print(result.detections)
+```
+
+환경 변수 `DATABRICKS_HOST`, `DATABRICKS_TOKEN`은 MLflow에서 사용합니다.
 
 ## 🛠️ 개발/테스트 환경
 - Python >= 3.11
