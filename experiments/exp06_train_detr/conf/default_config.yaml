@@ -1,36 +1,22 @@
 train:
-  data_dir: data/pcb_splits  # required
-  output_dir: artifacts/exp06/detr_finetune  # required
-  pretrained: true
-  seed: 42  # required
-  device: cpu  # required
-  score_threshold: 0.5
-  iou_threshold: 0.5
-  freeze_backbone: false
-  model_path: null
-  image_size: null
-  fast_dev_run: false
-  max_steps: null
-  max_train_samples: null
-  max_eval_samples: null
-  max_test_samples: null
+  data_dir: data/pcb_splits
+  output_dir: artifacts/exp06/detr_finetune
+  seed: 42
+  device: cpu
   training_args:
-    num_train_epochs: 10  # required
-    per_device_train_batch_size: 4  # required
-    per_device_eval_batch_size: 4  # required
-    learning_rate: 1.0e-4  # required
-    weight_decay: 1.0e-4  # required
-    eval_strategy: epoch  # required
-    logging_strategy: epoch  # required
-    save_strategy: epoch  # required
-    remove_unused_columns: false  # required
-    label_names: [labels]  # required
-    dataloader_drop_last: false  # required
-    seed: ${..seed}  # required
-    report_to: []  # required
+    num_train_epochs: 3
+    per_device_train_batch_size: 4
+    learning_rate: 1.0e-4
+    eval_strategy: epoch
+    logging_strategy: epoch
+    save_strategy: epoch
+    remove_unused_columns: false
+    label_names: [labels]
+    seed: ${..seed}
+    report_to: []
 
 mlflow:
   tracking_uri: databricks
   experiment_name: /Shared/Experiments/exp06_train_detr
   run_name: null
-  model_name: study.object_detection.detr01 # {catalog}.{schema}.{model} format
+  model_name: study.object_detection.detr01  # {catalog}.{schema}.{model} format

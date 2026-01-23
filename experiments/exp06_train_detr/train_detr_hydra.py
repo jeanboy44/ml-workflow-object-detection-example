@@ -17,12 +17,11 @@ import hydra
 import mlflow
 import numpy as np
 import torch
+from datasets import load_dataset
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from mlflow.models import infer_signature
 from omegaconf import MISSING, DictConfig, OmegaConf
-from torch.utils.data import Dataset, Subset
-from torchvision.datasets import CocoDetection
 from transformers import (
     DetrConfig,
     DetrForObjectDetection,
@@ -36,21 +35,18 @@ from transformers.models.detr.modeling_detr import DetrObjectDetectionOutput
 
 @dataclass
 class TrainingArgsConfig:
-    num_train_epochs: int = MISSING
-    per_device_train_batch_size: int = MISSING
-    per_device_eval_batch_size: int = MISSING
-    learning_rate: float = MISSING
-    weight_decay: float = MISSING
-    eval_strategy: str = MISSING
-    logging_strategy: str = MISSING
-    save_strategy: str = MISSING
+    num_train_epochs: int = 3
+    per_device_train_batch_size: int = 4
+    learning_rate: float = 1e-4
+    eval_strategy: str = "epoch"
+    logging_strategy: str = "epoch"
+    save_strategy: str = "epoch"
     eval_steps: Optional[int] = None
     logging_steps: Optional[int] = None
     max_steps: Optional[int] = None
     remove_unused_columns: bool = False
     label_names: list[str] = field(default_factory=lambda: ["labels"])
-    dataloader_drop_last: bool = False
-    seed: int = MISSING
+    seed: int = 42
     report_to: list[str] = field(default_factory=list)
 
 
@@ -58,30 +54,17 @@ class TrainingArgsConfig:
 class TrainConfig:
     data_dir: str = MISSING
     output_dir: str = MISSING
-    pretrained: bool = True
-    seed: int = MISSING
-    device: str = MISSING
-    score_threshold: float = 0.5
-    iou_threshold: float = 0.5
-    freeze_backbone: bool = False
-    model_path: Optional[str] = None
-    image_size: Optional[int] = None
-    fast_dev_run: bool = False
-    max_steps: Optional[int] = None
-    max_train_samples: Optional[int] = None
-    max_eval_samples: Optional[int] = None
-    max_test_samples: Optional[int] = None
+    seed: int = 42
+    device: str = "cpu"
     training_args: TrainingArgsConfig = field(default_factory=TrainingArgsConfig)
 
 
 @dataclass
 class MlflowConfig:
-    tracking_uri: Optional[str] = "databricks"
-    catalog: Optional[str] = None
-    schema: Optional[str] = None
-    model_name: Optional[str] = None
+    tracking_uri: str = "databricks"
     experiment_name: str = MISSING
     run_name: Optional[str] = None
+    model_name: Optional[str] = None  # {catalog}.{schema}.{model} format
 
 
 @dataclass
@@ -174,27 +157,53 @@ def rescale_bboxes(boxes: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     return torch.stack([x0, y0, x1, y1], dim=1)
 
 
-class CocoDetrDataset(Dataset):
-    def __init__(
-        self, root: Path, ann_file: Path, processor: DetrImageProcessor
-    ) -> None:
-        self.dataset = CocoDetection(root=str(root), annFile=str(ann_file))
-        self.processor = processor
+def transform_for_detr(processor: DetrImageProcessor):
+    """Create a transform function for DETR that processes images and annotations."""
 
-    def __len__(self) -> int:
-        return len(self.dataset)
+    def _transform(example_batch):
+        images = example_batch["image"]
+        batch_annotations = []
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        image, target = self.dataset[idx]
-        image_id = target[0]["image_id"] if target else idx
-        encoding = self.processor(
-            images=image,
-            annotations={"image_id": image_id, "annotations": target},
+        for idx, image in enumerate(images):
+            objects = (
+                example_batch.get("objects", [{}])[idx]
+                if example_batch.get("objects")
+                else {}
+            )
+            bboxes = objects.get("bbox", []) if objects else []
+            categories = objects.get("categories", []) if objects else []
+
+            annotations = []
+            for ann_id, (bbox, category_id) in enumerate(
+                zip(bboxes, categories, strict=False), start=1
+            ):
+                annotations.append(
+                    {
+                        "id": ann_id,
+                        "image_id": idx,
+                        "category_id": int(category_id),
+                        "bbox": [float(value) for value in bbox],
+                        "area": float(bbox[2]) * float(bbox[3])
+                        if len(bbox) == 4
+                        else 0.0,
+                        "iscrowd": 0,
+                    }
+                )
+            batch_annotations.append({"image_id": idx, "annotations": annotations})
+
+        encoding = processor(
+            images=images,
+            annotations=batch_annotations,
             return_tensors="pt",
         )
-        item = {k: v.squeeze(0) for k, v in encoding.items() if k != "labels"}
-        item["labels"] = encoding["labels"][0]
-        return item
+
+        return {
+            "pixel_values": encoding["pixel_values"],
+            "pixel_mask": encoding["pixel_mask"],
+            "labels": encoding["labels"],
+        }
+
+    return _transform
 
 
 def build_collate_fn(processor: DetrImageProcessor):
@@ -308,12 +317,13 @@ def build_compute_metrics(
     return _compute_metrics
 
 
-def maybe_subset(dataset: Dataset, max_samples: int | None) -> Dataset:
-    if max_samples is None:
-        return dataset
-    if max_samples <= 0:
-        return dataset
-    return Subset(dataset, list(range(min(len(dataset), max_samples))))
+def resolve_split(dataset_dict, primary: str, fallback: str | None = None):
+    """Resolve dataset split by primary name or fallback."""
+    if primary in dataset_dict:
+        return dataset_dict[primary]
+    if fallback and fallback in dataset_dict:
+        return dataset_dict[fallback]
+    raise KeyError(f"[ERROR] Missing {primary} split in dataset.")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="default_config")
@@ -335,20 +345,10 @@ def main(cfg: DictConfig) -> None:
         print(f"[ERROR] Config validation failed: {exc}")
         return
 
-    if cfg.mlflow.model_name:
-        parts = cfg.mlflow.model_name.split(".")
-        if len(parts) != 3:
-            raise ValueError(
-                "mlflow.model_name should be in {catalog}.{schema}.{model} format"
-            )
-
     OmegaConf.set_readonly(cfg.train, True)
     OmegaConf.set_readonly(cfg.mlflow, True)
 
     mlflow_cfg = cfg.mlflow
-    if mlflow_cfg.tracking_uri:
-        mlflow.set_tracking_uri(mlflow_cfg.tracking_uri)
-    mlflow.set_experiment(mlflow_cfg.experiment_name)
 
     train_cfg = OmegaConf.to_container(cfg.train, resolve=True) or {}
     data_dir = Path(train_cfg["data_dir"])
@@ -356,9 +356,10 @@ def main(cfg: DictConfig) -> None:
     seed = train_cfg["seed"]
     device = train_cfg["device"]
 
-    training_args_cfg = dict(train_cfg["training_args"])
-    # epochs = training_args_cfg["num_train_epochs"]
-    batch_size = training_args_cfg["per_device_train_batch_size"]
+    training_args_cfg = {
+        k: v for k, v in train_cfg["training_args"].items() if v is not None
+    }
+    # batch_size = training_args_cfg["per_device_train_batch_size"]
 
     random.seed(seed)
     torch.manual_seed(seed)
@@ -369,22 +370,14 @@ def main(cfg: DictConfig) -> None:
         label2id = json.load(f)
     id2label = {v: k for k, v in label2id.items()}
 
-    processor_kwargs = {}
-    if train_cfg.get("image_size"):
-        processor_kwargs = {
-            "size": {"shortest_edge": train_cfg["image_size"]},
-            "max_size": train_cfg["image_size"],
-        }
-    processor = DetrImageProcessor.from_pretrained(
-        "artifacts/facebook/detr-resnet-50", **processor_kwargs
-    )
+    processor = DetrImageProcessor.from_pretrained("artifacts/facebook/detr-resnet-50")
 
     model = build_model(
-        train_cfg["pretrained"],
-        label2id,
-        id2label,
-        train_cfg["freeze_backbone"],
-        train_cfg.get("model_path"),
+        pretrained=True,
+        label2id=label2id,
+        id2label=id2label,
+        freeze_backbone=False,
+        model_path=None,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -394,6 +387,8 @@ def main(cfg: DictConfig) -> None:
     else:
         run_name = mlflow_cfg.run_name
 
+    mlflow.set_tracking_uri(mlflow_cfg.tracking_uri)
+    mlflow.set_experiment(mlflow_cfg.experiment_name)
     with mlflow.start_run(run_name=run_name):
         mlflow.log_text(OmegaConf.to_yaml(cfg), "hydra/config.yaml")
         for key, value in train_cfg.items():
@@ -411,38 +406,15 @@ def main(cfg: DictConfig) -> None:
             for yaml_file in hydra_dir.glob("*.yaml"):
                 mlflow.log_artifact(str(yaml_file), artifact_path="hydra")
 
-        train_dataset = CocoDetrDataset(
-            root=data_dir / "train",
-            ann_file=data_dir / "annotations_train.json",
-            processor=processor,
-        )
-        val_dataset = CocoDetrDataset(
-            root=data_dir / "val",
-            ann_file=data_dir / "annotations_val.json",
-            processor=processor,
-        )
-        test_dataset = CocoDetrDataset(
-            root=data_dir / "test",
-            ann_file=data_dir / "annotations_test.json",
-            processor=processor,
-        )
+        dataset_dict = load_dataset("imagefolder", data_dir=str(data_dir))
+        train_split = resolve_split(dataset_dict, "train")
+        val_split = resolve_split(dataset_dict, "val", "validation")
+        test_split = resolve_split(dataset_dict, "test")
 
-        fast_dev_run = train_cfg.get("fast_dev_run", False)
-        max_train_samples = train_cfg.get("max_train_samples")
-        max_eval_samples = train_cfg.get("max_eval_samples")
-        max_test_samples = train_cfg.get("max_test_samples")
-
-        if fast_dev_run:
-            if max_train_samples is None:
-                max_train_samples = batch_size * 2
-            if max_eval_samples is None:
-                max_eval_samples = batch_size * 2
-            if max_test_samples is None:
-                max_test_samples = batch_size * 2
-
-        train_dataset = maybe_subset(train_dataset, max_train_samples)
-        val_dataset = maybe_subset(val_dataset, max_eval_samples)
-        test_dataset = maybe_subset(test_dataset, max_test_samples)
+        transform = transform_for_detr(processor)
+        train_dataset = train_split.with_transform(transform)
+        val_dataset = val_split.with_transform(transform)
+        test_dataset = test_split.with_transform(transform)
 
         use_mps = device == "mps"
         use_cpu = device == "cpu"
@@ -461,11 +433,7 @@ def main(cfg: DictConfig) -> None:
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             tokenizer=processor,
-            compute_metrics=build_compute_metrics(
-                processor,
-                train_cfg.get("score_threshold", 0.5),
-                train_cfg.get("iou_threshold", 0.5),
-            ),
+            compute_metrics=build_compute_metrics(processor, 0.5, 0.5),
             callbacks=[MLflowCallback()],
         )
 
@@ -476,6 +444,7 @@ def main(cfg: DictConfig) -> None:
             best_model = DetrForObjectDetection.from_pretrained(best_model_path)
         else:
             best_model = trainer.model
+
         registered_model_name = None
         if mlflow_cfg.model_name:
             parts = mlflow_cfg.model_name.split(".")
@@ -484,6 +453,7 @@ def main(cfg: DictConfig) -> None:
                     "mlflow.model_name should be in {catalog}.{schema}.{model} format"
                 )
             registered_model_name = mlflow_cfg.model_name
+
         image_size = resolve_image_size(train_cfg, processor)
         signature, input_example = build_signature(best_model, image_size)
         mlflow.pytorch.log_model(

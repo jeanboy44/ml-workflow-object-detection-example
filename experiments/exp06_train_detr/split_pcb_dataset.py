@@ -1,9 +1,9 @@
-"""Split the PCB dataset into train/val/test with COCO format.
+"""Split the PCB dataset into ImageFolder splits for HF Datasets.
 
 Example:
-    uv run experiments/exp06_train_detr/split_pcb_dataset_coco.py \
+    uv run experiments/exp06_train_detr/split_pcb_dataset.py \
         --base-dir data/PCB_DATASET \
-        --output-dir data/pcb_splits_coco
+        --output-dir data/pcb_splits_imagefolder
 """
 
 from __future__ import annotations
@@ -121,84 +121,52 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def create_coco_dataset(
+def build_object_metadata(
+    objects: list[dict],
+    category_name_to_id: dict[str, int],
+) -> dict[str, list]:
+    bboxes: list[list[float]] = []
+    categories: list[int] = []
+    for obj in objects:
+        label = obj["label"]
+        if label not in category_name_to_id:
+            print(f"[WARNING] Unknown label: {label}")
+            continue
+        xmin = float(obj["xmin"])
+        ymin = float(obj["ymin"])
+        xmax = float(obj["xmax"])
+        ymax = float(obj["ymax"])
+        bbox_width = max(0.0, xmax - xmin)
+        bbox_height = max(0.0, ymax - ymin)
+        bboxes.append([xmin, ymin, bbox_width, bbox_height])
+        categories.append(category_name_to_id[label])
+    return {"bbox": bboxes, "categories": categories}
+
+
+def create_imagefolder_split(
     split_items: list[AnnotationItem],
     images_dir: Path,
-    output_images_dir: Path,
+    output_dir: Path,
     category_name_to_id: dict[str, int],
-) -> dict:
-    """Create COCO format dataset.
-
-    Returns:
-        COCO format dict with images, annotations, categories
-    """
-    coco_data = {
-        "images": [],
-        "annotations": [],
-        "categories": [
-            {"id": cat_id, "name": cat_name, "supercategory": "defect"}
-            for cat_name, cat_id in sorted(
-                category_name_to_id.items(), key=lambda x: x[1]
-            )
-        ],
-    }
-
-    annotation_id = 1
-
+) -> list[dict[str, object]]:
+    metadata_entries: list[dict[str, object]] = []
     for image_id, item in enumerate(split_items, start=1):
-        filename, width, height, objects = parse_annotation(item.xml_path)
-
-        # Find image file
+        filename, _, _, objects = parse_annotation(item.xml_path)
         image_path = images_dir / item.class_name / filename
         if not image_path.exists():
             print(f"[WARNING] Image not found: {image_path}")
             continue
 
-        # Create unique filename to avoid conflicts
-        unique_filename = f"{item.class_name}_{filename}"
-        output_image_path = output_images_dir / unique_filename
-
-        # Copy image
-        shutil.copy2(image_path, output_image_path)
-
-        # Add image info
-        coco_data["images"].append(
+        suffix = image_path.suffix or Path(filename).suffix or ".jpg"
+        new_filename = f"{image_id:06d}{suffix}"
+        shutil.copy2(image_path, output_dir / new_filename)
+        metadata_entries.append(
             {
-                "id": image_id,
-                "file_name": unique_filename,
-                "width": width,
-                "height": height,
+                "file_name": new_filename,
+                "objects": build_object_metadata(objects, category_name_to_id),
             }
         )
-
-        # Add annotations
-        for obj in objects:
-            label = obj["label"]
-            if label not in category_name_to_id:
-                print(f"[WARNING] Unknown label: {label}")
-                continue
-
-            xmin = obj["xmin"]
-            ymin = obj["ymin"]
-            xmax = obj["xmax"]
-            ymax = obj["ymax"]
-            bbox_width = xmax - xmin
-            bbox_height = ymax - ymin
-            area = bbox_width * bbox_height
-
-            coco_data["annotations"].append(
-                {
-                    "id": annotation_id,
-                    "image_id": image_id,
-                    "category_id": category_name_to_id[label],
-                    "bbox": [xmin, ymin, bbox_width, bbox_height],  # COCO: [x, y, w, h]
-                    "area": area,
-                    "iscrowd": 0,
-                }
-            )
-            annotation_id += 1
-
-    return coco_data
+    return metadata_entries
 
 
 @app.command()
@@ -207,14 +175,14 @@ def main(
         "data/PCB_DATASET", help="Base PCB dataset directory"
     ),
     output_dir: Path = typer.Option(
-        "data/pcb_splits_coco", help="Output directory for COCO format data"
+        "data/pcb_splits_imagefolder", help="Output directory for ImageFolder data"
     ),
     train_ratio: float = typer.Option(0.8, help="Train split ratio"),
     val_ratio: float = typer.Option(0.1, help="Validation split ratio"),
     test_ratio: float = typer.Option(0.1, help="Test split ratio"),
     seed: int = typer.Option(42, help="Random seed"),
 ):
-    """Split the PCB dataset into train/val/test with COCO format."""
+    """Split the PCB dataset into train/val/test ImageFolder splits."""
     annotations_dir = base_dir / "Annotations"
     images_dir = base_dir / "images"
 
@@ -252,38 +220,32 @@ def main(
     for split_name, items_list in split_map.items():
         print(f"\n[INFO] Processing {split_name} split ({len(items_list)} images)...")
 
-        # Create images directory for this split
-        split_images_dir = output_dir / split_name
-        ensure_dir(split_images_dir)
+        split_output_dir = output_dir / split_name
+        ensure_dir(split_output_dir)
 
-        # Create COCO dataset
-        coco_data = create_coco_dataset(
+        metadata_entries = create_imagefolder_split(
             items_list,
             images_dir,
-            split_images_dir,
+            split_output_dir,
             category_name_to_id,
         )
 
-        # Save COCO annotation file
-        annotation_file = output_dir / f"annotations_{split_name}.json"
-        with open(annotation_file, "w") as f:
-            json.dump(coco_data, f, indent=2)
+        metadata_file = split_output_dir / "metadata.jsonl"
+        with open(metadata_file, "w") as f:
+            for entry in metadata_entries:
+                f.write(json.dumps(entry, ensure_ascii=True) + "\n")
 
         print(
-            f"[INFO] {split_name}: {len(coco_data['images'])} images, "
-            f"{len(coco_data['annotations'])} annotations"
+            f"[INFO] {split_name}: {len(metadata_entries)} samples saved to {split_output_dir}"
         )
-        print(f"[INFO] Saved: {annotation_file}")
+        print(f"[INFO] Saved: {metadata_file}")
 
-    print(f"\n[SUCCESS] COCO format dataset created: {output_dir}")
+    print(f"\n[SUCCESS] ImageFolder dataset created: {output_dir}")
     print("  Structure:")
     print(f"    {output_dir}/")
-    print("      train/              # Training images")
-    print("      val/                # Validation images")
-    print("      test/               # Test images")
-    print("      annotations_train.json")
-    print("      annotations_val.json")
-    print("      annotations_test.json")
+    print("      train/              # Training images + metadata.jsonl")
+    print("      val/                # Validation images + metadata.jsonl")
+    print("      test/               # Test images + metadata.jsonl")
     print("      categories.json")
 
 
