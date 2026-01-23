@@ -62,18 +62,13 @@ def register_callbacks(yolo_model: YOLO) -> None:
 
 def log_best_model(save_dir: Path, registered_model_name: str | None) -> None:
     best_path = save_dir / "weights" / "best.pt"
-    last_path = save_dir / "weights" / "last.pt"
-    model_path = best_path if best_path.exists() else last_path
-    if not model_path.exists():
-        print(f"[WARN] No model checkpoint found in {save_dir}")
-        return
-    print(f"[INFO] Registering model from {model_path}")
+    print(f"[INFO] Registering model from {best_path}")
     if registered_model_name:
         print(f"[INFO] MLflow registered_model_name={registered_model_name}")
-    best_model = YOLO(str(model_path))
+    best_model = YOLO(str(best_path))
     mlflow.pytorch.log_model(
         best_model.model,
-        artifact_path="best_model",
+        name="best_model",
         registered_model_name=registered_model_name,
     )
     print("[INFO] Model registration complete")
@@ -125,6 +120,7 @@ def main(
 
     run_name = run_name or default_name
     yolo_run_name = name or default_name
+    yolo_log_dir = Path("runs/detect") / project / yolo_run_name
 
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params(
@@ -158,10 +154,10 @@ def main(
         print("[INFO] YOLO training complete")
 
         registered_model_name = f"{catalog}.{schema}.{model_name}"
-        print(f"[INFO] Looking for checkpoints in {Path(project) / yolo_run_name}")
-        log_best_model(Path(project) / yolo_run_name, registered_model_name)
+        print(f"[INFO] Looking for checkpoints in {yolo_log_dir}")
+        log_best_model(yolo_log_dir, registered_model_name)
 
-        results_csv = Path(project) / yolo_run_name / "results.csv"
+        results_csv = yolo_log_dir / "results.csv"
         train_metrics = read_last_metrics(results_csv)
         log_metrics("train/", train_metrics)
 
