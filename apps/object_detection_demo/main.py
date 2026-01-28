@@ -1,15 +1,41 @@
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 from ml_object_detector import load, predict
 from streamlit_utils import DetectionBox, annotate_image, render_image_selector
 
 st.set_page_config(page_title="ML Object Detector", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    .inputs-panel {
+        border: 1px solid #d0d4dd;
+        border-radius: 12px;
+        padding: 16px;
+        background: #ffffff;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 @st.cache_resource
-def load_detector(model_uri: str, tracking_uri: str):
-    return load(model_uri, tracking_uri=tracking_uri)
+def load_detector(
+    model_name: str,
+    tracking_uri: str,
+    model_version: str | None,
+    model_alias: str | None,
+):
+    return load(
+        model_name,
+        tracking_uri=tracking_uri,
+        model_version=model_version,
+        model_alias=model_alias,
+    )
 
 
 st.title("ML Object Detector")
@@ -20,6 +46,7 @@ IMAGE_WIDTH = 420
 inputs, original_col, result_col = st.columns([1, 1, 1])
 
 with inputs:
+    st.markdown('<div class="inputs-panel">', unsafe_allow_html=True)
     st.subheader("Inputs")
     registered_model_name = st.text_input(
         "Registered model name",
@@ -45,6 +72,7 @@ with inputs:
         key_prefix="ml_object_detector", show_preview=False
     )
     run = st.button("Run prediction", type="primary", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with original_col:
     st.subheader("Original")
@@ -65,11 +93,21 @@ with result_col:
         st.info("Click Run prediction to see results.")
     else:
         with st.spinner("Running model..."):
+            start_time = time.perf_counter()
             if selector_mode == "Alias":
-                model_uri = f"models:/{registered_model_name}@{selector_value}"
+                model = load_detector(
+                    registered_model_name,
+                    tracking_uri,
+                    model_version=None,
+                    model_alias=selector_value,
+                )
             else:
-                model_uri = f"models:/{registered_model_name}/{selector_value}"
-            model = load_detector(model_uri, tracking_uri)
+                model = load_detector(
+                    registered_model_name,
+                    tracking_uri,
+                    model_version=selector_value,
+                    model_alias=None,
+                )
             result = predict(model, input_image.image, threshold=score_threshold)
             detections = [
                 DetectionBox(
@@ -79,10 +117,12 @@ with result_col:
                 )
                 for det in result.detections
             ]
+            elapsed = time.perf_counter() - start_time
         annotated = annotate_image(
             input_image.image, detections, score_threshold=score_threshold
         )
         st.image(annotated, width=IMAGE_WIDTH)
+        st.caption(f"Inference time: {elapsed:.3f}s")
         if detections:
             st.dataframe(
                 [

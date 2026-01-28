@@ -24,7 +24,7 @@ class TrainConfig:
     imgsz: int = MISSING
     batch: int = MISSING
     lr0: Optional[float] = None
-    warmup_epochs: Optional[int] = None
+    warmup_epochs: int = 0
     device: Optional[str] = None
     exist_ok: bool = True
     freeze: int = 0
@@ -58,6 +58,13 @@ def on_fit_epoch_end(trainer) -> None:
     epoch = int(getattr(trainer, "epoch", 0))
     for key, value in metrics.items():
         mlflow.log_metric(f"epoch/{key}", value, step=epoch)
+    save_dir = getattr(trainer, "save_dir", None)
+    if save_dir:
+        weight_path = Path(save_dir) / "weights" / "last.pt"
+        if weight_path.exists():
+            mlflow.log_artifact(
+                str(weight_path), artifact_path=f"epoch_weights/epoch_{epoch}"
+            )
 
 
 def build_signature(yolo_model: YOLO, imgsz: int) -> tuple[Any, Any]:
@@ -72,26 +79,20 @@ def build_signature(yolo_model: YOLO, imgsz: int) -> tuple[Any, Any]:
     return signature, input_example
 
 
-def log_best_model(
+def log_best_and_last_models(
     save_dir: Path,
     registered_model_name: str | None,
     imgsz: int,
 ) -> None:
     best_path = save_dir / "weights" / "best.pt"
     last_path = save_dir / "weights" / "last.pt"
-    model_path = best_path if best_path.exists() else last_path
-    if not model_path.exists():
-        print(f"[WARN] No model checkpoint found in {save_dir}")
+    if not best_path.exists() and not last_path.exists():
+        print(f"[WARN] No model checkpoints found in {save_dir}")
         return
-    best_model = YOLO(str(model_path))
-    signature, input_example = build_signature(best_model, imgsz)
-    mlflow.pytorch.log_model(
-        best_model.model,
-        artifact_path="best_model",
-        registered_model_name=registered_model_name,
-        signature=signature,
-        input_example=input_example,
-    )
+    if best_path.exists():
+        mlflow.log_artifact(str(best_path), artifact_path="weights/best_model")
+    if last_path.exists():
+        mlflow.log_artifact(str(last_path), artifact_path="weights/last_model")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="default_config")
@@ -147,7 +148,7 @@ def main(cfg: DictConfig) -> None:
 
         save_dir = Path("runs/detect") / cfg.train.project / cfg.train.name
         if cfg.mlflow.model_name:
-            log_best_model(
+            log_best_and_last_models(
                 Path(save_dir),
                 cfg.mlflow.model_name,
                 int(cfg.train.get("imgsz", 640)),

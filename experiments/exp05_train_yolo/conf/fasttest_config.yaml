@@ -1,9 +1,10 @@
 train:
   data: data/pcb_yolo/data.yaml  # required
   model: artifacts/yolo/yolo26n.pt  # required
-  epochs: 1  # required
+  epochs: 10  # required
   imgsz: 320  # required
   batch: 2  # required
+  warmup_epochs: 0
   device: null
   project: runs/exp05  # required
   name: yolo_finetune01 # required

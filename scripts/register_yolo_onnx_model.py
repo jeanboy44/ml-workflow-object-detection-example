@@ -2,10 +2,10 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "mlflow[databricks]>=3.4.0",
+#     "onnxruntime>=1.17.0",
 #     "pillow>=12.1.0",
 #     "python-dotenv>=1.0.1",
 #     "typer>=0.21.1",
-#     "ultralytics>=8.4.3",
 # ]
 # ///
 # pyright: reportIncompatibleMethodOverride=false
@@ -16,10 +16,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import mlflow
 import numpy as np
+import onnxruntime as ort
 import typer
 from dotenv import load_dotenv
 from mlflow.models import ModelSignature
@@ -27,30 +28,48 @@ from mlflow.pyfunc.model import PythonModel
 from mlflow.tracking import MlflowClient
 from mlflow.types import ColSpec, Schema, TensorSpec
 from PIL import Image
-from ultralytics import YOLO  # type: ignore[attr-defined]
 
 load_dotenv()
 
-app = typer.Typer(help="YOLO MLflow 레지스트리 등록 스크립트")
+app = typer.Typer(help="YOLO ONNX 모델을 MLflow 레지스트리에 등록합니다.")
 
 
 @dataclass
 class Config:
     confidence: float = 0.25
+    imgsz: int = 640
 
 
-class YoloPredictModel(PythonModel):
+class YoloOnnxPredictModel(PythonModel):
     def __init__(self, config: Config) -> None:
         self.config = config
 
     def load_context(self, context) -> None:
         weights_path = context.artifacts["weights"]
-        self.model = YOLO(weights_path)
-        self.names = (
-            self.model.names
-            if isinstance(self.model.names, dict)
-            else {idx: name for idx, name in enumerate(self.model.names)}
+        self.session = ort.InferenceSession(
+            str(weights_path),
+            providers=["CPUExecutionProvider"],
         )
+        self.input_meta = self.session.get_inputs()[0]
+        self.input_name = self.input_meta.name
+        self.input_shape = self.input_meta.shape
+        self.names = self._resolve_names(context)
+
+    def _resolve_names(self, context) -> dict[int, str]:
+        names = None
+        names_path = context.artifacts.get("names")
+        if names_path:
+            try:
+                with Path(names_path).open("r", encoding="utf-8") as handle:
+                    names = json.load(handle)
+            except Exception:
+                names = None
+        if isinstance(names, dict):
+            return {int(key): value for key, value in names.items()}
+        if isinstance(names, list):
+            return {idx: name for idx, name in enumerate(names)}
+
+        return {}
 
     def _iter_images(self, model_input) -> Iterable[Image.Image]:
         if isinstance(model_input, dict):
@@ -79,6 +98,55 @@ class YoloPredictModel(PythonModel):
             images.append(Image.fromarray(item.astype(np.uint8), mode="RGB"))
         return images
 
+    def _closest_stride_size(self, size: int, stride: int = 32) -> int:
+        return max(stride, (size // stride) * stride)
+
+    def _resolve_input_size(self, image: Image.Image) -> tuple[int, int]:
+        if len(self.input_shape) >= 4:
+            height = self.input_shape[2]
+            width = self.input_shape[3]
+            if isinstance(height, int) and isinstance(width, int):
+                return width, height
+        size = self._closest_stride_size(self.config.imgsz)
+        return size, size
+
+    def _preprocess(self, image: Image.Image) -> tuple[np.ndarray, int, int]:
+        original_width, original_height = image.size
+        width, height = self._resolve_input_size(image)
+        resized = image.resize((width, height))
+        array = np.asarray(resized, dtype=np.float32) / 255.0
+        array = np.transpose(array, (2, 0, 1))
+        return np.expand_dims(array, axis=0), original_width, original_height
+
+    def _extract_detections(self, outputs: Sequence[object]) -> np.ndarray:
+        if not outputs:
+            return np.empty((0, 6), dtype=np.float32)
+        detections = np.asarray(outputs[0])
+        if detections.ndim == 3:
+            detections = detections[0]
+        if detections.ndim == 2 and detections.shape[-1] >= 6:
+            return detections[:, :6]
+        return np.empty((0, 6), dtype=np.float32)
+
+    def _scale_boxes(
+        self,
+        boxes: np.ndarray,
+        resized_size: tuple[int, int],
+        original_size: tuple[int, int],
+    ) -> np.ndarray:
+        if boxes.size == 0:
+            return boxes
+        resized_w, resized_h = resized_size
+        original_w, original_h = original_size
+
+        boxes = boxes.copy()
+        if np.max(boxes[:, :4]) <= 1.5:
+            boxes[:, [0, 2]] *= resized_w
+            boxes[:, [1, 3]] *= resized_h
+        boxes[:, [0, 2]] *= original_w / resized_w
+        boxes[:, [1, 3]] *= original_h / resized_h
+        return boxes
+
     def predict(
         self,
         context,
@@ -89,37 +157,39 @@ class YoloPredictModel(PythonModel):
         outputs = []
 
         for image in images:
-            results = self.model(
-                image,
-                conf=self.config.confidence,
-                verbose=False,
-            )[0]
-            detections = []
-            for box, score, cls in zip(
-                results.boxes.xyxy.cpu().tolist(),
-                results.boxes.conf.cpu().tolist(),
-                results.boxes.cls.cpu().tolist(),
-                strict=True,
-            ):
-                detections.append(
+            input_tensor, original_w, original_h = self._preprocess(image)
+            resized_w = input_tensor.shape[3]
+            resized_h = input_tensor.shape[2]
+            outputs_raw = self.session.run(None, {self.input_name: input_tensor})
+            detections = self._extract_detections(outputs_raw)
+            detections = detections[detections[:, 4] >= self.config.confidence]
+            detections = self._scale_boxes(
+                detections,
+                (resized_w, resized_h),
+                (original_w, original_h),
+            )
+            detections_list = []
+            for det in detections:
+                x1, y1, x2, y2, score, cls = det[:6]
+                label = self.names.get(int(cls), str(int(cls)))
+                detections_list.append(
                     {
-                        "label": self.names[int(cls)],
+                        "label": label,
                         "score": float(score),
-                        "box": [float(coord) for coord in box],
+                        "box": [float(x1), float(y1), float(x2), float(y2)],
                     }
                 )
-            outputs.append(json.dumps(detections))
+            outputs.append(json.dumps(detections_list))
 
         return outputs
 
 
-def _validate_model(weights_path: Path, config: Config) -> None:
-    model = YoloPredictModel(config)
+def _validate_model(predict_model: PythonModel, weights_path: Path) -> None:
     context = SimpleNamespace(artifacts={"weights": str(weights_path)})
-    model.load_context(context)
+    predict_model.load_context(context)
 
     sample = np.zeros((1, 64, 64, 3), dtype=np.uint8)
-    output = model.predict(context, sample)
+    output = predict_model.predict(context, sample)
 
     if not isinstance(output, list) or len(output) != 1:
         raise ValueError("예측 결과는 길이 1의 리스트여야 합니다.")
@@ -133,17 +203,26 @@ def _validate_model(weights_path: Path, config: Config) -> None:
         raise ValueError("예측 결과 JSON은 리스트여야 합니다.")
 
 
+def _build_pip_requirements() -> list[str]:
+    return [
+        "mlflow[databricks]>=3.4.0",
+        "onnxruntime>=1.17.0",
+        "pillow>=12.1.0",
+    ]
+
+
 @app.command()
 def main(
     model_name: str = typer.Argument(..., help="등록할 모델 이름"),
-    weights_path: Path = typer.Argument(..., help="YOLO.pt 가중치 경로"),
+    model_path: Path = typer.Argument(..., help="YOLO .onnx 경로"),
     run_name: str | None = typer.Option(None, help="MLflow run 이름"),
     confidence: float = typer.Option(0.25, help="YOLO confidence threshold"),
+    imgsz: int = typer.Option(640, help="ONNX 입력 이미지 사이즈"),
     model_catalog: str = typer.Option("study", help="모델 카탈로그 이름"),
     model_schema: str = typer.Option("object_detection", help="모델 스키마 이름"),
 ):
     """
-    YOLO 모델을 MLflow에 등록하고 이미지 텐서 입력용 pyfunc 모델을 생성합니다.
+    YOLO ONNX 모델을 MLflow에 등록하고 이미지 텐서 입력용 pyfunc 모델을 생성합니다.
     """
     model_full_name = f"{model_catalog}.{model_schema}.{model_name}"
 
@@ -160,27 +239,31 @@ def main(
     if input_example.dtype != np.uint8 or input_example.ndim != 4:
         raise ValueError("input_example은 uint8의 (N, H, W, 3) 텐서여야 합니다.")
 
+    if not model_path.exists():
+        raise typer.BadParameter(f"모델 파일을 찾을 수 없습니다: {model_path}")
+    if model_path.suffix.lower() != ".onnx":
+        raise typer.BadParameter(f"ONNX 모델만 지원합니다: {model_path}")
+
     mlflow.set_experiment("/Shared/Models/yolo_models")
     with mlflow.start_run(run_name=run_name) as run:
-        config = Config(confidence=confidence)
+        config = Config(confidence=confidence, imgsz=imgsz)
         try:
-            _validate_model(weights_path, config)
+            _validate_model(YoloOnnxPredictModel(config), model_path)
             typer.secho("모델 검증 통과", fg=typer.colors.GREEN)
         except Exception as exc:
             typer.secho(f"모델 검증 실패: {exc}", fg=typer.colors.RED)
             raise typer.Exit(code=1)
 
+        predict_model = YoloOnnxPredictModel(config)
+
         mlflow.pyfunc.log_model(
             name=model_name,
-            python_model=YoloPredictModel(config),
-            artifacts={"weights": str(weights_path)},
+            python_model=predict_model,
+            artifacts={"weights": str(model_path)},
             signature=signature,
+            code_paths=[str(Path(__file__))],
             input_example=input_example,
-            pip_requirements=[
-                "mlflow[databricks]>=3.4.0",
-                "pillow>=12.1.0",
-                "ultralytics>=8.4.3",
-            ],
+            pip_requirements=_build_pip_requirements(),
         )
         model_uri = f"runs:/{run.info.run_id}/{model_name}"
 

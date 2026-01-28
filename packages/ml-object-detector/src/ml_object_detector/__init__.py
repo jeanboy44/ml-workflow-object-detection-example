@@ -1,4 +1,10 @@
-from ml_object_detector.detectors import Detection, DetectionResult, load, load_image, predict
+from ml_object_detector.detectors import (
+    Detection,
+    DetectionResult,
+    load,
+    load_image,
+    predict,
+)
 
 __all__ = [
     "Detection",
