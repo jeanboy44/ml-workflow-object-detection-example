@@ -23,6 +23,19 @@ def load_classes(classes_path: Path) -> list[str]:
     return [line.strip() for line in classes_path.read_text().splitlines() if line]
 
 
+def resolve_classes_path(split_dir: Path) -> Path:
+    candidates = [
+        split_dir / "classes.txt",
+        split_dir / "VOC2012" / "classes.txt",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    raise FileNotFoundError(
+        "[ERROR] classes.txt not found. Run split_pcb_dataset.py first."
+    )
+
+
 def parse_annotation(
     xml_path: Path,
 ) -> tuple[str, int, int, list[tuple[str, list[int]]]]:
@@ -81,26 +94,38 @@ def main(
     output_dir: Path = typer.Option("data/pcb_yolo", help="Output directory"),
 ):
     """Convert PCB VOC annotations into YOLO format."""
-    class_names = load_classes(split_dir / "classes.txt")
+    classes_path = resolve_classes_path(split_dir)
+    class_names = load_classes(classes_path)
     label2id = {name: idx for idx, name in enumerate(class_names)}
     label2id_lower = {name.lower(): idx for name, idx in label2id.items()}
-
-    for split in ["train", "val", "test"]:
-        ann_split_dir = split_dir / "annotations" / split
-        img_split_dir = split_dir / "images" / split
-        if not ann_split_dir.exists():
-            print(f"[WARN] Missing {ann_split_dir}, skipping.")
-            continue
-
-        for class_dir in sorted(p for p in ann_split_dir.iterdir() if p.is_dir()):
-            for xml_path in sorted(class_dir.glob("*.xml")):
+    voc_root = split_dir / "VOC2012"
+    if voc_root.exists():
+        ann_dir = voc_root / "Annotations"
+        img_dir = voc_root / "JPEGImages"
+        imagesets_dir = voc_root / "ImageSets" / "Main"
+        for split in ["train", "val", "test"]:
+            split_list_path = imagesets_dir / f"{split}.txt"
+            if not split_list_path.exists():
+                print(f"[WARN] Missing {split_list_path}, skipping.")
+                continue
+            image_ids = [
+                line.strip()
+                for line in split_list_path.read_text().splitlines()
+                if line.strip()
+            ]
+            for image_id in image_ids:
+                xml_path = ann_dir / f"{image_id}.xml"
+                if not xml_path.exists():
+                    raise FileNotFoundError(
+                        f"[ERROR] Missing annotation file: {xml_path}"
+                    )
                 filename, width, height, objects = parse_annotation(xml_path)
-                image_path = img_split_dir / class_dir.name / filename
+                image_path = img_dir / filename
                 if not image_path.exists():
                     raise FileNotFoundError(f"[ERROR] Missing image file: {image_path}")
 
-                label_out_dir = output_dir / "labels" / split / class_dir.name
-                image_out_dir = output_dir / "images" / split / class_dir.name
+                label_out_dir = output_dir / "labels" / split
+                image_out_dir = output_dir / "images" / split
                 ensure_dir(label_out_dir)
                 ensure_dir(image_out_dir)
 
@@ -122,6 +147,48 @@ def main(
                 if not image_out_path.exists():
                     image_out_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(image_path, image_out_path)
+    else:
+        for split in ["train", "val", "test"]:
+            ann_split_dir = split_dir / "annotations" / split
+            img_split_dir = split_dir / "images" / split
+            if not ann_split_dir.exists():
+                print(f"[WARN] Missing {ann_split_dir}, skipping.")
+                continue
+
+            for class_dir in sorted(p for p in ann_split_dir.iterdir() if p.is_dir()):
+                for xml_path in sorted(class_dir.glob("*.xml")):
+                    filename, width, height, objects = parse_annotation(xml_path)
+                    image_path = img_split_dir / class_dir.name / filename
+                    if not image_path.exists():
+                        raise FileNotFoundError(
+                            f"[ERROR] Missing image file: {image_path}"
+                        )
+
+                    label_out_dir = output_dir / "labels" / split / class_dir.name
+                    image_out_dir = output_dir / "images" / split / class_dir.name
+                    ensure_dir(label_out_dir)
+                    ensure_dir(image_out_dir)
+
+                    label_path = label_out_dir / f"{image_path.stem}.txt"
+                    lines = []
+                    for label, box in objects:
+                        label_key = label.strip().lower()
+                        if label_key not in label2id_lower:
+                            raise ValueError(f"[ERROR] Unknown label: {label}")
+                        class_id = label2id_lower[label_key]
+                        x_center, y_center, box_w, box_h = to_yolo_bbox(
+                            box, width, height
+                        )
+                        lines.append(
+                            f"{class_id} {x_center:.6f} {y_center:.6f} "
+                            f"{box_w:.6f} {box_h:.6f}"
+                        )
+                    label_path.write_text("\n".join(lines) + "\n")
+
+                    image_out_path = image_out_dir / image_path.name
+                    if not image_out_path.exists():
+                        image_out_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(image_path, image_out_path)
 
     write_data_yaml(output_dir, class_names)
     print(f"[INFO] YOLO dataset saved: {output_dir}")

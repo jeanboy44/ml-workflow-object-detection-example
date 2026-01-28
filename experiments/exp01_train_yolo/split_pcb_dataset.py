@@ -28,7 +28,14 @@ def parse_annotation(xml_path: Path) -> tuple[str, list[str]]:
     tree = ET.parse(xml_path)
     root = tree.getroot()
     filename = root.findtext("filename")
-    labels = [obj.findtext("name") for obj in root.findall("object")]
+    if filename is None:
+        raise ValueError(f"[ERROR] Missing filename metadata: {xml_path}")
+    labels = []
+    for obj in root.findall("object"):
+        label = obj.findtext("name")
+        if label is None:
+            raise ValueError(f"[ERROR] Missing object name: {xml_path}")
+        labels.append(label)
     return filename, labels
 
 
@@ -81,10 +88,10 @@ def normalize_label(label: str) -> str:
     return label.strip().replace("_", " ").title().replace(" ", "_")
 
 
-def copy_item_voc(
+def copy_item_split(
     item: AnnotationItem,
     images_dir: Path,
-    voc_root: Path,
+    output_dir: Path,
     split: str,
 ) -> tuple[Path, Path, str]:
     filename, labels = parse_annotation(item.xml_path)
@@ -92,8 +99,8 @@ def copy_item_voc(
     if not image_path.exists():
         raise FileNotFoundError(f"[ERROR] Missing image file: {image_path}")
 
-    img_out_dir = voc_root / "JPEGImages"
-    ann_out_dir = voc_root / "Annotations"
+    img_out_dir = output_dir / "images" / split / item.class_name
+    ann_out_dir = output_dir / "annotations" / split / item.class_name
     ensure_dir(img_out_dir)
     ensure_dir(ann_out_dir)
 
@@ -113,6 +120,8 @@ def copy_item_voc(
     for obj in root.findall("object"):
         name_elem = obj.find("name")
         if name_elem is not None:
+            if name_elem.text is None:
+                raise ValueError(f"[ERROR] Missing object name: {item.xml_path}")
             name_elem.text = normalize_label(name_elem.text)
 
     tree.write(ann_output, encoding="utf-8", xml_declaration=True)
@@ -163,29 +172,16 @@ def main(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create VOC2012 subdirectory for torchvision.datasets.VOCDetection compatibility
-    voc_root = output_dir / "VOC2012"
-    voc_root.mkdir(parents=True, exist_ok=True)
-
     class_names = sorted({item.class_name for item in items})
-    (voc_root / "classes.txt").write_text("\n".join(class_names) + "\n")
-    print(f"[INFO] Classes saved: {voc_root / 'classes.txt'}")
+    (output_dir / "classes.txt").write_text("\n".join(class_names) + "\n")
+    print(f"[INFO] Classes saved: {output_dir / 'classes.txt'}")
 
     split_map = split_items(items, train_ratio, val_ratio, test_ratio, seed)
     manifest_rows: list[dict[str, str]] = []
-    imagesets_dir = voc_root / "ImageSets" / "Main"
-    ensure_dir(imagesets_dir)
-
-    split_files = {
-        "train": (imagesets_dir / "train.txt").open("w"),
-        "val": (imagesets_dir / "val.txt").open("w"),
-        "test": (imagesets_dir / "test.txt").open("w"),
-    }
-
     for split, split_items_list in split_map.items():
         for item in split_items_list:
-            img_output, ann_output, unique_name = copy_item_voc(
-                item, images_dir, voc_root, split
+            img_output, ann_output, _ = copy_item_split(
+                item, images_dir, output_dir, split
             )
             manifest_rows.append(
                 {
@@ -195,14 +191,9 @@ def main(
                     "annotation_path": str(ann_output),
                 }
             )
-            split_files[split].write(unique_name + "\n")
 
-    for f in split_files.values():
-        f.close()
-
-    write_manifest(manifest_rows, voc_root)
-    print(f"[INFO] VOC-format dataset saved: {voc_root}")
-    print(f"[INFO] ImageSets: {imagesets_dir}")
+    write_manifest(manifest_rows, output_dir)
+    print(f"[INFO] Split dataset saved: {output_dir}")
 
 
 if __name__ == "__main__":
