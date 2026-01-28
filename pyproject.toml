@@ -5,18 +5,20 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "lse-object-detector>=0.1.0",
-
-]
-
-[dependency-groups]
-dev = [
+    "fsspec>=2026.1.0",
+    "kaggle>=1.8.3",
+    "loguru>=0.7.3",
+    "onnxruntime>=1.23.2",
+    "pillow>=12.1.0",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
+    "python-dotenv>=1.2.1",
     "ruff>=0.14.11",
-]
-experiments = [
-    "polars>=1.37.1",
+    "typer>=0.21.1",
+    "ml_object_detector>=0.1.0",
+    "databricks-sdk>=0.78.0",
+    "onnx>=1.20.1",
+    "ipykernel>=7.1.0",
 ]
 
 [tool.ruff]
@@ -25,7 +27,9 @@ indent-width = 4
 target-version = "py311"
 
 [tool.uv.workspace]
-members = ["packages/lse-object-detector"]
+members = [
+    "packages/*"
+]
 
 [tool.uv.sources]
-lse-object-detector = { workspace = true }
+ml-object-detector = { workspace = true }

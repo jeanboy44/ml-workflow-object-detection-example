@@ -1,0 +1,24 @@
+[project]
+name = "ml-object-detector"
+version = "0.1.0"
+description = "ML Object Detector Example"
+readme = "README.md"
+authors = [
+    { name = "Jingeol Ryu", email = "jgryu@ls-electric.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "loguru>=0.7.3",
+    "pillow>=12.1.0",
+    "rich>=14.2.0",
+    "onnxruntime>=1.23.2",
+    "mlflow[databricks]>=3.8.1",
+]
+
+[project.scripts]
+ml-object-detector = "ml_object_detector:main"
+
+[build-system]
+requires = ["uv_build>=0.9.25,<0.10.0"]
+build-backend = "uv_build"

@@ -201,7 +201,25 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# MLflow
+mlruns/
+
+# Hydra
+outputs/
+.hydra/
+multirun/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# yolo
+runs/
+
+data/*
+!data/.gitkeep
+!data/sample_data
+
+artifacts/*
+!artifacts/.gitkeep

@@ -33,7 +33,7 @@ uv sync  # 모든 의존성 설치 (pyproject.toml/uv.lock 기반)
 ├── data/                       # 데이터 및 샘플 저장소
 ├── experiments/                # 실험 코드 및 샘플 테스트
 ├── packages                    # 프로젝트의 파이썬 모듈(패키지) 저장소
-│   └── lse-object-detector     # "lse-object-detector" 파이썬 패키지 루트 디렉토리
+│   └── ml-object-detector     # "ml-object-detector" 파이썬 패키지 루트 디렉토리
 ├── tests/                      # 프로젝트 루트 테스트 코드
 ├── .gitignore                  # Git 무시 파일 목록
 ├── .pre-commit-config.yaml     # pre-commit 관리 파일
