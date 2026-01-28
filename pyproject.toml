@@ -18,6 +18,7 @@ dependencies = [
     "ml_object_detector>=0.1.0",
     "databricks-sdk>=0.78.0",
     "onnx>=1.20.1",
+    "ipykernel>=7.1.0",
 ]
 
 [tool.ruff]

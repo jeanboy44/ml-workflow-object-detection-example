@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+import os
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import mlflow
 import numpy as np
 from dotenv import load_dotenv
-from loguru import logger
+from mlflow.tracking import MlflowClient
 from PIL import Image
+
+from ml_object_detector.logger import logger  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,12 @@ class Detection:
 @dataclass(frozen=True)
 class DetectionResult:
     detections: list[Detection]
+
+
+ALLOWED_MODEL_NAMES = (
+    "study.object_detection.yolo26n_finetuned_onnx",
+    "study.object_detection.yolo26n_pretrained_onnx",
+)
 
 
 def load_image(path: str | Path) -> Image.Image:
@@ -36,8 +46,84 @@ def _resolve_model_uri(
         raise ValueError("model_version 또는 model_alias 중 하나만 입력해야 합니다.")
     if not model_version and not model_alias:
         raise ValueError("model_version 또는 model_alias 중 하나는 필수입니다.")
+    if model_alias:
+        return f"models:/{model_name}@{model_alias}"
+    return f"models:/{model_name}/{model_version}"
+
+
+def list_models() -> list[str]:
+    return list(ALLOWED_MODEL_NAMES)
+
+
+def list_model_versions(
+    model_name: str,
+    tracking_uri: str = "databricks",
+) -> list[str]:
+    load_dotenv()
+    if model_name not in ALLOWED_MODEL_NAMES:
+        allowed = ", ".join(ALLOWED_MODEL_NAMES)
+        raise ValueError(
+            f"허용되지 않은 모델: {model_name}. 사용 가능한 모델: {allowed}"
+        )
+    mlflow.set_tracking_uri(tracking_uri)
+    client = MlflowClient(tracking_uri=tracking_uri)
+    versions = client.search_model_versions(f"name='{model_name}'")
+    version_numbers = sorted({str(mv.version) for mv in versions}, key=int)
+    return list(version_numbers)
+
+
+def _cache_root() -> Path:
+    cache_root = os.getenv(
+        "ML_OBJECT_DETECTOR_CACHE_DIR",
+        str(Path.home() / ".cache" / "ml-object-detector"),
+    )
+    return Path(cache_root).expanduser()
+
+
+def _cache_dir(
+    model_name: str,
+    model_version: str | None,
+    model_alias: str | None,
+) -> Path:
     suffix = model_version if model_version else model_alias
-    return f"models:/{model_name}/{suffix}"
+    cache_key = f"{model_name}-{suffix}"
+    return _cache_root() / cache_key
+
+
+def clear_cache(
+    model_name: str | None = None,
+    model_version: str | None = None,
+    model_alias: str | None = None,
+) -> list[Path]:
+    removed: list[Path] = []
+    if model_name is None:
+        cache_dir = _cache_root()
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            removed.append(cache_dir)
+        return removed
+
+    if model_name not in ALLOWED_MODEL_NAMES:
+        allowed = ", ".join(ALLOWED_MODEL_NAMES)
+        raise ValueError(
+            f"허용되지 않은 모델: {model_name}. 사용 가능한 모델: {allowed}"
+        )
+
+    if model_version is None and model_alias is None:
+        prefix = f"{model_name}-"
+        cache_root = _cache_root()
+        if cache_root.exists():
+            for path in cache_root.iterdir():
+                if path.is_dir() and path.name.startswith(prefix):
+                    shutil.rmtree(path)
+                    removed.append(path)
+        return removed
+
+    cache_dir = _cache_dir(model_name, model_version, model_alias)
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        removed.append(cache_dir)
+    return removed
 
 
 def load(
@@ -47,12 +133,25 @@ def load(
     model_alias: str | None = None,
 ):
     load_dotenv()
+    if model_name not in ALLOWED_MODEL_NAMES:
+        allowed = ", ".join(ALLOWED_MODEL_NAMES)
+        raise ValueError(
+            f"허용되지 않은 모델: {model_name}. 사용 가능한 모델: {allowed}"
+        )
     mlflow.set_tracking_uri(tracking_uri)
     if tracking_uri == "databricks" and model_name.count(".") != 2:
         raise ValueError("model_name은 {catalog}.{schema}.{name} 형식이어야 합니다.")
     model_uri = _resolve_model_uri(model_name, model_version, model_alias)
-    logger.info("Loading MLflow pyfunc model: {}", model_uri)
-    return mlflow.pyfunc.load_model(model_uri)
+    cache_dir = _cache_dir(model_name, model_version, model_alias)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_model = cache_dir / "MLmodel"
+    if cached_model.exists():
+        logger.info("Loading cached MLflow model: {}", cache_dir)
+        return mlflow.pyfunc.load_model(str(cache_dir))
+    logger.info("Downloading MLflow model to cache: {}", cache_dir)
+    local_path = mlflow.artifacts.download_artifacts(model_uri, dst_path=str(cache_dir))
+    logger.info("Loading MLflow pyfunc model: {}", local_path)
+    return mlflow.pyfunc.load_model(local_path)
 
 
 def predict(model, image: Image.Image, threshold: float = 0.25) -> DetectionResult:

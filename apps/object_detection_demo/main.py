@@ -3,7 +3,10 @@ from __future__ import annotations
 import time
 
 import streamlit as st
-from ml_object_detector import load, predict
+from ml_object_detector import list_model_versions  # type: ignore[attr-defined]
+from ml_object_detector import list_models  # type: ignore[attr-defined]
+from ml_object_detector import load  # type: ignore[attr-defined]
+from ml_object_detector import predict  # type: ignore[attr-defined]
 from streamlit_utils import DetectionBox, annotate_image, render_image_selector
 
 st.set_page_config(page_title="ML Object Detector", layout="wide")
@@ -47,30 +50,55 @@ inputs, original_col, result_col = st.columns([1, 1, 1])
 
 with inputs.container(border=True):
     st.subheader("Inputs")
-    registered_model_name = st.text_input(
-        "Registered model name",
-        value="catalog.schema.model_name",
-        help="Format: {catalog}.{schema}.{name}",
-    )
+    model_options = list_models()
+    if not model_options:
+        st.warning("No registered models available.")
+        registered_model_name = ""
+    else:
+        registered_model_name = st.selectbox(
+            "Registered model name",
+            options=model_options,
+            index=0,
+            help="Only registered models are available",
+        )
+    tracking_uri = st.text_input("Tracking URI", value="databricks")
     selector_mode = st.radio("Selector", ["Alias", "Version"], horizontal=True)
     if selector_mode == "Alias":
         selector_value = st.text_input(
             "Alias",
-            value="production",
-            help="Use model alias, e.g. production, champion, or prod",
+            value="",
+            help="Use model alias registered in Unity Catalog (e.g. champion, prod)",
         )
     else:
-        selector_value = st.text_input(
-            "Version",
-            value="1",
-            help="Use a numeric model version",
+        version_options = (
+            list_model_versions(registered_model_name, tracking_uri)
+            if registered_model_name
+            else []
         )
-    tracking_uri = st.text_input("Tracking URI", value="databricks")
+        if version_options:
+            selector_value = st.selectbox(
+                "Version",
+                options=version_options,
+                index=len(version_options) - 1,
+                help="Use a numeric model version",
+            )
+        else:
+            st.warning("No versions found for the selected model.")
+            selector_value = ""
     score_threshold = st.slider("Score threshold", 0.0, 1.0, 0.25, 0.05)
     input_image = render_image_selector(
         key_prefix="ml_object_detector", show_preview=False
     )
-    run = st.button("Run prediction", type="primary", use_container_width=True)
+    selector_value = selector_value or ""
+    selector_valid = bool(selector_value.strip())
+    run = st.button(
+        "Run prediction",
+        type="primary",
+        use_container_width=True,
+        disabled=not model_options or not selector_valid,
+    )
+    if selector_mode == "Alias" and not selector_valid:
+        st.info("Alias를 입력해야 실행할 수 있습니다.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with original_col:
