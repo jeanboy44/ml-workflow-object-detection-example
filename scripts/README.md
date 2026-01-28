@@ -7,13 +7,24 @@
 MLflow run 기준으로 모델 아티팩트를 내려받습니다.
 
 ```bash
-python scripts/download_model_from_run.py <run_id> <artifact_path>
+python scripts/download_model_from_run.py <run_id> <model_path>
 ```
 
 예시:
 
 ```bash
 python scripts/download_model_from_run.py 1234567890abcdef model_name
+```
+
+## YOLO PT -> ONNX 변환 및 검증
+
+다운로드한 `.pt` 모델을 ONNX로 변환하고, ONNX 유효성 및 예측 결과를 검증합니다.
+예측 검증은 `experiments/data_sample` 폴더의 이미지들을 사용합니다.
+
+```bash
+python scripts/convert_pt_to_onnx.py artifacts/runs/<run_id>/model/best.pt \
+  --output-dir artifacts/onnx \
+  --sample-dir experiments/data_sample
 ```
 
 ## Databricks Volume 모델/데이터 다운로드

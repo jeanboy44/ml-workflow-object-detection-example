@@ -79,7 +79,7 @@ uv run experiments/exp05_train_yolo/train_yolo_hydra.py
 
 Mosaic 증강:
 ```sh
-uv run experiments/exp05_train_yolo/train_yolo_hydra.py train.imgsz=1280 train.batch=16 train.freeze=10 train.mosaic=1.0
+uv run experiments/exp05_train_yolo/train_yolo_hydra.py train.imgsz=1280 train.batch=32 train.freeze=20 train.mosaic=1.0
 ```
 
 ## 배포 준비

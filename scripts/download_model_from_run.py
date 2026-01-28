@@ -24,7 +24,7 @@ app = typer.Typer(help="Databricks MLflow run에서 모델 아티팩트 다운�
 @app.command()
 def main(
     run_id: str = typer.Argument(..., help="MLflow run ID"),
-    artifact_path: str = typer.Argument(..., help="run 내 모델 아티팩트 경로"),
+    model_path: str = typer.Argument(..., help="run 내 모델 경로"),
     download_dir: Path = typer.Option(Path("artifacts/runs"), help="다운로드 디렉토리"),
 ):
     """
@@ -39,7 +39,7 @@ def main(
         typer.secho(f"run 조회 실패: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    model_uri = f"runs:/{run_id}/{artifact_path}"
+    model_uri = f"runs:/{run_id}/{model_path}"
 
     destination = download_dir / run_id
     destination.mkdir(parents=True, exist_ok=True)
