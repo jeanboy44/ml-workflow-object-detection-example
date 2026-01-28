@@ -23,6 +23,8 @@ class TrainConfig:
     epochs: int = MISSING
     imgsz: int = MISSING
     batch: int = MISSING
+    lr0: Optional[float] = None
+    warmup_epochs: Optional[int] = None
     device: Optional[str] = None
     exist_ok: bool = True
     freeze: int = 0

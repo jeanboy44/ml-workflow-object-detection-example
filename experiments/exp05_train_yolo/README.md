@@ -79,7 +79,16 @@ uv run experiments/exp05_train_yolo/train_yolo_hydra.py
 
 Mosaic 증강:
 ```sh
-uv run experiments/exp05_train_yolo/train_yolo_hydra.py train.imgsz=1280 train.batch=32 train.freeze=20 train.mosaic=1.0
+uv run experiments/exp05_train_yolo/train_yolo_hydra.py \
+  train.imgsz=640 \
+  train.epochs=120 \
+  train.batch=16 \
+  train.mosaic=0.2 \
+  train.lr0=0.0025 \
+  train.warmup_epochs=5 \
+  train.project=runs/exp05 \
+  train.name=yolo_finetune01_tuned_lr \
+  mlflow.run_name=yolo_finetune01_tuned_lr
 ```
 
 ## 배포 준비

@@ -4,6 +4,8 @@ train:
   epochs: 50  # required
   imgsz: 640  # required
   batch: 16  # required
+  lr0: 0.0025
+  warmup_epochs: 5
   device: null
   project: runs/exp05  # required
   name: yolo_finetune01 # required
