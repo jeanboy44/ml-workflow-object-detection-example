@@ -12,5 +12,11 @@ dependencies = [
     "ultralytics>=8.4.8",
 ]
 
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py311"
+
 [tool.uv.workspace]
 members = ["packages/*"]
+

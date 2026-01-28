@@ -5,8 +5,18 @@ description = "Exploratory Data Analysis for ML Workflow Object Detection Exampl
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
     "numpy>=2.4.1",
     "opencv-python>=4.13.0.90",
     "pillow>=12.1.0",
 ]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py311"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
