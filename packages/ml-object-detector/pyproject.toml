@@ -15,6 +15,7 @@ dependencies = [
     "onnxruntime>=1.23.2",
     "mlflow>=3.8.1",
     "databricks-sdk>=0.78.0",
+    "mlflow-skinny[databricks]>=3.8.1",
 ]
 
 [project.scripts]
