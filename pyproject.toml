@@ -15,6 +15,7 @@ dependencies = [
     "ruff>=0.14.11",
     "typer>=0.21.1",
     "ml_object_detector>=0.1.0",
+    "databricks-sdk>=0.78.0",
 ]
 
 [dependency-groups]
@@ -33,7 +34,6 @@ experiments = [
     "timm>=1.0.24",
     "torch>=2.9.1",
     "transformers>=4.57.5",
-    "typer>=0.21.1",
     "ultralytics>=8.4.3",
 ]
 

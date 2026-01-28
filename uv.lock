@@ -2456,6 +2456,7 @@ dependencies = [
     { name = "loguru" },
     { name = "mlflow" },
     { name = "pillow" },
+    { name = "python-dotenv" },
     { name = "ultralytics" },
 ]
 
@@ -2464,6 +2465,7 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mlflow", specifier = ">=3.4.0" },
     { name = "pillow", specifier = ">=12.1.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "ultralytics", specifier = ">=8.4.3" },
 ]
 
@@ -2472,6 +2474,7 @@ name = "ml-workflow-object-detection-example"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "databricks-sdk" },
     { name = "fsspec" },
     { name = "kaggle" },
     { name = "loguru" },
@@ -2500,12 +2503,12 @@ experiments = [
     { name = "timm" },
     { name = "torch" },
     { name = "transformers" },
-    { name = "typer" },
     { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "databricks-sdk", specifier = ">=0.78.0" },
     { name = "fsspec", specifier = ">=2026.1.0" },
     { name = "kaggle", specifier = ">=1.8.3" },
     { name = "loguru", specifier = ">=0.7.3" },
@@ -2534,7 +2537,6 @@ experiments = [
     { name = "timm", specifier = ">=1.0.24" },
     { name = "torch", specifier = ">=2.9.1" },
     { name = "transformers", specifier = ">=4.57.5" },
-    { name = "typer", specifier = ">=0.21.1" },
     { name = "ultralytics", specifier = ">=8.4.3" },
 ]
 
