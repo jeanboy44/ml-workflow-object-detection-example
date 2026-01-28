@@ -1,0 +1,20 @@
+[project]
+name = "common"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jingeol Ryu", email = "jgryu@ls-electric.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "pillow>=12.1.0",
+]
+
+[project.scripts]
+common = "common:main"
+
+[build-system]
+requires = ["uv_build>=0.9.25,<0.10.0"]
+build-backend = "uv_build"

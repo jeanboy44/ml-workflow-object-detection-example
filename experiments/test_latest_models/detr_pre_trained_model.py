@@ -14,9 +14,8 @@ from pathlib import Path
 
 import torch
 import typer
+from common.utils import load_image, plot_detections
 from transformers import DetrForObjectDetection, DetrImageProcessor
-
-from experiments.utils import load_image, plot_detections
 
 app = typer.Typer()
 

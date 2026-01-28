@@ -14,9 +14,8 @@ from pathlib import Path
 
 import torch
 import typer
+from experiments.common.utils import load_image, plot_detections
 from transformers import GroundingDinoForObjectDetection, GroundingDinoProcessor
-
-from experiments.utils import load_image, plot_detections
 
 MODEL_NAME = "artifacts/IDEA-Research/grounding-dino-base"
 

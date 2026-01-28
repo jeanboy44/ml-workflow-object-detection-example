@@ -5,9 +5,8 @@ uv run experiments/e02_yolo_pre_trained_model.py experiments/sample_data --outpu
 from pathlib import Path
 
 import typer
+from experiments.common.utils import load_image, plot_detections
 from ultralytics import YOLO
-
-from experiments.utils import load_image, plot_detections
 
 app = typer.Typer()
 

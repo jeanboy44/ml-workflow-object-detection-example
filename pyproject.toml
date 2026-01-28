@@ -45,7 +45,7 @@ indent-width = 4
 target-version = "py311"
 
 [tool.uv.workspace]
-members = ["packages/ml-object-detector"]
+members = ["packages/*"]
 
 [tool.uv.sources]
 ml-object-detector = { workspace = true }
