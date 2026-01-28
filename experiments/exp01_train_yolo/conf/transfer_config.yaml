@@ -1,13 +1,14 @@
 train:
-  data: data/pcb_yolo/data.yaml  # required
-  model: artifacts/yolo/yolo26n.pt  # required
+  data: ../../data/pcb_yolo/data.yaml  # required
+  model: ../../artifacts/yolo/yolo26n.pt  # required
   epochs: 50  # required
+  save_period: 10
   imgsz: 640  # required
   batch: 16  # required
   lr0: 0.0025
   warmup_epochs: 5
   device: null
-  project: runs/exp05  # required
+  project: runs/exp01_train_yolo  # required
   name: yolo_finetune01 # required
   exist_ok: true
   freeze: 0
@@ -17,4 +18,3 @@ mlflow:
   tracking_uri: databricks
   experiment_name: /Shared/Experiments/exp05_train_yolo
   run_name: yolo_finetune01
-  model_name: study.object_detection.yolo01 # {catalog}.{schema}.{model} format

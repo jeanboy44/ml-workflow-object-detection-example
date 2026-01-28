@@ -1,15 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "mlflow[databricks]>=3.4.0",
-#     "pillow>=12.1.0",
-#     "python-dotenv>=1.0.1",
-#     "typer>=0.21.1",
-#     "ultralytics>=8.4.3",
-# ]
-# ///
-# pyright: reportIncompatibleMethodOverride=false
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
 import json

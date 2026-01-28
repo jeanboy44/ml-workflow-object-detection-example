@@ -219,6 +219,7 @@ runs/
 
 data/*
 !data/.gitkeep
+!data/sample_data
 
 artifacts/*
 !artifacts/.gitkeep

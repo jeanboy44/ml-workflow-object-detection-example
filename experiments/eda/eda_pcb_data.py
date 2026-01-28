@@ -1,8 +1,5 @@
 """
 PCB 결함 데이터셋에 대한 EDA(탐색적 분석)
-
-실행: uv run experiments/e03_eda_pcb_data.py
-
 - 클래스별 데이터 수, 라벨 포맷, 이미지+바운딩박스 시각화, 추가 통계까지 모두 자동화
 """
 
@@ -14,7 +11,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-BASE = "data/PCB_DATASET"
+BASE = "../../data/PCB_DATASET"
 ANNOT = os.path.join(BASE, "Annotations")
 IMG = os.path.join(BASE, "images")
 

@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "typer>=0.21.1",
-#     "ultralytics>=8.4.8",
-# ]
-# ///
 from __future__ import annotations
 
 from dataclasses import dataclass

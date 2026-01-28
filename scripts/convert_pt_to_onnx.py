@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "onnx>=1.16.0",
-#     "onnxruntime>=1.17.0",
-#     "typer>=0.21.1",
-#     "ultralytics>=8.4.8",
-# ]
-# ///
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +5,7 @@ from pathlib import Path
 
 import onnx
 import typer
-from ultralytics import YOLO
+from ultralytics import YOLO  # type: ignore
 
 app = typer.Typer(help="YOLO .pt 모델을 ONNX로 변환하고 검증합니다.")
 
@@ -24,9 +14,11 @@ app = typer.Typer(help="YOLO .pt 모델을 ONNX로 변환하고 검증합니다.
 class PredictionValidationResult:
     images: int
     avg_match_rate: float
-    avg_mean_iou: float
-    avg_pt_detections: float
-    avg_onnx_detections: float
+    avg_abs_dx1: float
+    avg_abs_dy1: float
+    avg_abs_dx2: float
+    avg_abs_dy2: float
+    avg_abs_dscore: float
 
 
 def convert_to_onnx(
@@ -101,34 +93,55 @@ def _run_inference(
     return boxes, [int(label) for label in labels], scores
 
 
-def _compare_predictions(
+def _compare_predictions_by_delta(
     pt_boxes: list[list[float]],
     pt_labels: list[int],
+    pt_scores: list[float],
     onnx_boxes: list[list[float]],
     onnx_labels: list[int],
-    iou_threshold: float,
-) -> tuple[float, float]:
+    onnx_scores: list[float],
+) -> tuple[float, dict[str, float], int]:
     matches = 0
-    iou_sum = 0.0
     used = set()
-    for box, label in zip(pt_boxes, pt_labels, strict=True):
-        best_iou = 0.0
+    diffs = {
+        "dx1": 0.0,
+        "dy1": 0.0,
+        "dx2": 0.0,
+        "dy2": 0.0,
+        "dscore": 0.0,
+    }
+
+    for pt_box, pt_label, pt_score in zip(pt_boxes, pt_labels, pt_scores, strict=True):
+        best_delta = float("inf")
         best_idx = None
         for idx, (onnx_box, onnx_label) in enumerate(zip(onnx_boxes, onnx_labels)):
-            if idx in used or label != onnx_label:
+            if idx in used or pt_label != onnx_label:
                 continue
-            iou = _box_iou(box, onnx_box)
-            if iou > best_iou:
-                best_iou = iou
+            delta = (
+                abs(pt_box[0] - onnx_box[0])
+                + abs(pt_box[1] - onnx_box[1])
+                + abs(pt_box[2] - onnx_box[2])
+                + abs(pt_box[3] - onnx_box[3])
+            )
+            if delta < best_delta:
+                best_delta = delta
                 best_idx = idx
-        if best_idx is not None and best_iou >= iou_threshold:
-            used.add(best_idx)
-            matches += 1
-            iou_sum += best_iou
+
+        if best_idx is None:
+            continue
+
+        used.add(best_idx)
+        matches += 1
+        onnx_box = onnx_boxes[best_idx]
+        onnx_score = onnx_scores[best_idx] if best_idx < len(onnx_scores) else 0.0
+        diffs["dx1"] += abs(pt_box[0] - onnx_box[0])
+        diffs["dy1"] += abs(pt_box[1] - onnx_box[1])
+        diffs["dx2"] += abs(pt_box[2] - onnx_box[2])
+        diffs["dy2"] += abs(pt_box[3] - onnx_box[3])
+        diffs["dscore"] += abs(pt_score - onnx_score)
 
     match_rate = matches / len(pt_boxes) if pt_boxes else 0.0
-    mean_iou = iou_sum / matches if matches else 0.0
-    return match_rate, mean_iou
+    return match_rate, diffs, matches
 
 
 def _match_predictions(
@@ -294,7 +307,6 @@ def validate_predictions(
     conf: float,
     imgsz: int,
     device: str | None,
-    iou_threshold: float,
     max_images: int | None,
 ) -> PredictionValidationResult:
     if not sample_dir.exists():
@@ -318,32 +330,47 @@ def validate_predictions(
     onnx = YOLO(str(onnx_model))
 
     total_match_rate = 0.0
-    total_mean_iou = 0.0
-    total_pt_detections = 0
-    total_onnx_detections = 0
+    total_dx1 = 0.0
+    total_dy1 = 0.0
+    total_dx2 = 0.0
+    total_dy2 = 0.0
+    total_dscore = 0.0
+    total_matches = 0
+    effective_conf = min(conf, 0.001)
 
     for image_path in image_paths:
         pt_boxes, pt_labels, pt_scores = _run_inference(
-            pt, image_path, conf, imgsz, device
+            pt, image_path, effective_conf, imgsz, device
         )
         onnx_boxes, onnx_labels, onnx_scores = _run_inference(
-            onnx, image_path, conf, imgsz, device
+            onnx, image_path, effective_conf, imgsz, device
         )
-        match_rate, mean_iou = _compare_predictions(
-            pt_boxes, pt_labels, onnx_boxes, onnx_labels, iou_threshold
+        match_rate, diffs, matches = _compare_predictions_by_delta(
+            pt_boxes,
+            pt_labels,
+            pt_scores,
+            onnx_boxes,
+            onnx_labels,
+            onnx_scores,
         )
         total_match_rate += match_rate
-        total_mean_iou += mean_iou
-        total_pt_detections += len(pt_scores)
-        total_onnx_detections += len(onnx_scores)
+        total_dx1 += diffs["dx1"]
+        total_dy1 += diffs["dy1"]
+        total_dx2 += diffs["dx2"]
+        total_dy2 += diffs["dy2"]
+        total_dscore += diffs["dscore"]
+        total_matches += matches
 
     images = len(image_paths)
+    avg_divisor = total_matches if total_matches else 1
     return PredictionValidationResult(
         images=images,
         avg_match_rate=total_match_rate / images,
-        avg_mean_iou=total_mean_iou / images,
-        avg_pt_detections=total_pt_detections / images,
-        avg_onnx_detections=total_onnx_detections / images,
+        avg_abs_dx1=total_dx1 / avg_divisor,
+        avg_abs_dy1=total_dy1 / avg_divisor,
+        avg_abs_dx2=total_dx2 / avg_divisor,
+        avg_abs_dy2=total_dy2 / avg_divisor,
+        avg_abs_dscore=total_dscore / avg_divisor,
     )
 
 
@@ -352,7 +379,7 @@ def main(
     pt_model: Path = typer.Argument(..., help="YOLO .pt 모델 경로"),
     output_dir: Path = typer.Option(Path("artifacts/onnx"), help="ONNX 저장 디렉토리"),
     sample_dir: Path = typer.Option(
-        Path("experiments/samples"), help="예측 검증 샘플 이미지 디렉토리"
+        Path("data/sample_data"), help="예측 검증 샘플 이미지 디렉토리"
     ),
     imgsz: int = typer.Option(640, help="변환/추론 이미지 사이즈"),
     conf: float = typer.Option(0.25, help="예측 confidence threshold"),
@@ -397,17 +424,23 @@ def main(
         conf,
         imgsz,
         device,
-        iou_threshold,
         max_images,
     )
     typer.secho(
-        "예측 결과 검증 완료: images={} match_rate={:.2%} mean_iou={:.3f} "
-        "avg_pt_det={:.2f} avg_onnx_det={:.2f}".format(
-            stats.images,
-            stats.avg_match_rate,
-            stats.avg_mean_iou,
-            stats.avg_pt_detections,
-            stats.avg_onnx_detections,
+        "예측 결과 검증 완료 (PT vs ONNX)\n"
+        "- 비교 기준: 동일 클래스 박스끼리 좌표/점수 절대 차이\n"
+        "- match_rate: PT 박스 중 매칭된 비율\n"
+        "- confidence: 비교용 예측 임계값({conf:.3f})\n"
+        "결과: images={images} match_rate={match_rate:.2%} "
+        "dx1={dx1:.3f} dy1={dy1:.3f} dx2={dx2:.3f} dy2={dy2:.3f} dscore={dscore:.4f}".format(
+            conf=min(conf, 0.001),
+            images=stats.images,
+            match_rate=stats.avg_match_rate,
+            dx1=stats.avg_abs_dx1,
+            dy1=stats.avg_abs_dy1,
+            dx2=stats.avg_abs_dx2,
+            dy2=stats.avg_abs_dy2,
+            dscore=stats.avg_abs_dscore,
         ),
         fg=typer.colors.GREEN,
     )
@@ -418,7 +451,7 @@ def compare(
     pt_model: Path = typer.Argument(..., help="YOLO .pt 모델 경로"),
     onnx_model: Path = typer.Argument(..., help="ONNX 모델 경로"),
     sample_dir: Path = typer.Option(
-        Path("experiments/samples"), help="예측 검증 샘플 이미지 디렉토리"
+        Path("data/sample_data"), help="예측 검증 샘플 이미지 디렉토리"
     ),
     imgsz: int = typer.Option(640, help="추론 이미지 사이즈"),
     conf: float = typer.Option(0.25, help="예측 confidence threshold"),

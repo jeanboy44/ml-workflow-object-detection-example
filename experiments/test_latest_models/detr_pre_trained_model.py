@@ -1,21 +1,10 @@
-"""
-# Zero-Shot Object Detection with Hugging Face OWL-ViT
-
-## 사전 준비
-1. 필요 리소스 다운로드
-uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/facebook/detr-resnet-50/ --dst-path artifacts/facebook/detr-resnet-50/
-
-## 실험 실행
-    uv run experiments/e01_detr_pre_trained_model.py experiments/sample_data/ --output-dir data/output_detr --score-threshold 0.7
-
-"""
-
 from pathlib import Path
 
 import torch
 import typer
-from common.utils import load_image, plot_detections
 from transformers import DetrForObjectDetection, DetrImageProcessor
+
+from utils import load_image, plot_detections
 
 app = typer.Typer()
 
@@ -23,12 +12,13 @@ app = typer.Typer()
 def run_detr(
     img_path: Path,
     save_path: Path = None,
+    model_path: Path = None,
     device: str = "cpu",
     score_threshold: float = 0.1,
 ):
-    processor = DetrImageProcessor.from_pretrained("artifacts/facebook/detr-resnet-50")
+    processor = DetrImageProcessor.from_pretrained(model_path)
     model = DetrForObjectDetection.from_pretrained(
-        "artifacts/facebook/detr-resnet-50",
+        model_path,
         use_pretrained_backbone=False,  # https://github.com/huggingface/transformers/issues/15764
     )
     model.to(device)
@@ -61,6 +51,9 @@ def run_detr(
 @app.command()
 def main(
     input: Path = typer.Argument(..., help="Path to image or image folder"),
+    model_path: Path = typer.Option(
+        "../../artifacts/facebook/detr-resnet-50", help="Path to pre-trained model"
+    ),
     output_dir: Path = typer.Option(
         None, help="Output dir for visualization (optional)"
     ),
@@ -91,6 +84,7 @@ def main(
         run_detr(
             input_path,
             save_path=save_path,
+            model_path=model_path,
             device=device,
             score_threshold=score_threshold,
         )

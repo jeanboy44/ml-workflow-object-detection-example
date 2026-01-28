@@ -1,12 +1,9 @@
-"""
-uv run experiments/e02_yolo_pre_trained_model.py experiments/sample_data --output-dir data/output_yolo26n/
-"""
-
 from pathlib import Path
 
 import typer
-from experiments.common.utils import load_image, plot_detections
 from ultralytics import YOLO
+
+from utils import load_image, plot_detections
 
 app = typer.Typer()
 
@@ -14,7 +11,7 @@ app = typer.Typer()
 def run_yolo(
     img_path: Path,
     save_path: Path = None,
-    model_path: str = "artifacts/yolo/yolo26n.pt",
+    model_path: str = "../../artifacts/yolo/yolo26n.pt",
 ):
     assert img_path.exists(), f"[ERROR] 입력 이미지가 존재하지 않습니다: {img_path}"
     image = load_image(img_path)
@@ -32,7 +29,7 @@ def main(
     input: Path = typer.Argument(..., help="입력 이미지/폴더 경로"),
     output_dir: Path = typer.Option(None, help="결과 저장 폴더(없으면 show만)"),
     model_path: str = typer.Option(
-        "artifacts/yolo/yolo26n.pt", help="YOLO 모델 가중치 파일"
+        "../../artifacts/yolo/yolo26n.pt", help="YOLO 모델 가중치 파일"
     ),
 ):
     """YOLO 사전학습모델로 객체 탐지를 실행합니다."""

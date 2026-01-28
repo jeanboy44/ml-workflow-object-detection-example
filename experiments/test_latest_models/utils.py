@@ -32,6 +32,7 @@ def plot_detections(
         )
     plt.axis("off")
     if save_path:
+        save_path.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_path, bbox_inches="tight")
         print(f"[INFO] Detect result saved: {save_path}")
     else:

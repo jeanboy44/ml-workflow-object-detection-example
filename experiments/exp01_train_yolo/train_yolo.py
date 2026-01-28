@@ -1,9 +1,5 @@
 """
 Train YOLO on the PCB dataset (fine-tune or from scratch).
-
-Example:
-    uv run experiments/exp05/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt
-    uv run experiments/exp05_train_yolo/train_yolo.py --data-yaml data/pcb_yolo/data.yaml --model artifacts/yolo/yolo26n.pt --epochs 1 --imgsz 320 --batch 2 --fraction 0.01 --no-val --no-save --no-plots
 """
 
 from __future__ import annotations

@@ -34,15 +34,6 @@
 | pcb_train2.jpg | Spur     | 400  | 80   | 488  | 165  |
 | ... | ... | ... | ... | ... | ... |
 
----
-
-## 📥 활용 예시 (Python)
-```python
-import pandas as pd
-
-df = pd.read_csv('train.csv')
-print(df.head())
-```
 
 ---
 

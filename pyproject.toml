@@ -14,10 +14,10 @@ dependencies = [
     "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "ruff>=0.14.11",
-    "streamlit>=1.40.0",
     "typer>=0.21.1",
     "ml_object_detector>=0.1.0",
     "databricks-sdk>=0.78.0",
+    "onnx>=1.20.1",
 ]
 
 [tool.ruff]
@@ -26,7 +26,9 @@ indent-width = 4
 target-version = "py311"
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = [
+    "packages/*"
+]
 
 [tool.uv.sources]
 ml-object-detector = { workspace = true }

@@ -2,6 +2,14 @@
 
 스크립트 실행 예시 모음.
 
+## 프로젝트 초기 설정 점검
+
+필수 도구/파일이 준비되었는지 확인합니다.
+
+```bash
+python scripts/check_project_setup.py
+```
+
 ## Databricks MLflow run 모델 다운로드
 
 MLflow run 기준으로 모델 아티팩트를 내려받습니다.

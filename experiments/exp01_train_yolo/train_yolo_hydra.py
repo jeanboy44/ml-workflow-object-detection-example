@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import hydra
 import mlflow
@@ -10,39 +9,8 @@ import numpy as np
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from mlflow.models import infer_signature
-from omegaconf import MISSING, DictConfig, OmegaConf
-from ultralytics import YOLO, settings
-
-
-@dataclass
-class TrainConfig:
-    data: str = MISSING
-    model: str = MISSING
-    project: str = MISSING
-    name: str = MISSING
-    epochs: int = MISSING
-    imgsz: int = MISSING
-    batch: int = MISSING
-    lr0: Optional[float] = None
-    warmup_epochs: int = 0
-    device: Optional[str] = None
-    exist_ok: bool = True
-    freeze: int = 0
-    mosaic: float = 0.0
-
-
-@dataclass
-class MlflowConfig:
-    tracking_uri: Optional[str] = "databricks"
-    experiment_name: str = MISSING
-    run_name: Optional[str] = None
-    model_name: Optional[str] = None
-
-
-@dataclass
-class AppConfig:
-    train: TrainConfig = field(default_factory=TrainConfig)
-    mlflow: MlflowConfig = field(default_factory=MlflowConfig)
+from omegaconf import DictConfig, OmegaConf
+from ultralytics import YOLO, settings  # type: ignore[attr-defined]
 
 
 def _epoch_metrics(metrics: dict[str, Any]) -> dict[str, float]:
@@ -79,11 +47,7 @@ def build_signature(yolo_model: YOLO, imgsz: int) -> tuple[Any, Any]:
     return signature, input_example
 
 
-def log_best_and_last_models(
-    save_dir: Path,
-    registered_model_name: str | None,
-    imgsz: int,
-) -> None:
+def log_best_and_last_models(save_dir: Path) -> None:
     best_path = save_dir / "weights" / "best.pt"
     last_path = save_dir / "weights" / "last.pt"
     if not best_path.exists() and not last_path.exists():
@@ -95,36 +59,10 @@ def log_best_and_last_models(
         mlflow.log_artifact(str(last_path), artifact_path="weights/last_model")
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="default_config")
+@hydra.main(version_base=None, config_path="conf", config_name="test_config")
 def main(cfg: DictConfig) -> None:
-    # argument parsing and config validation
     load_dotenv()
-    schema = OmegaConf.structured(AppConfig)
-    OmegaConf.set_struct(schema, False)
-    OmegaConf.set_struct(schema.train, False)
-    OmegaConf.set_struct(schema.mlflow, False)
-    cfg = OmegaConf.merge(schema, cfg)
-
-    try:
-        final_config = OmegaConf.to_container(
-            cfg,
-            resolve=True,
-            throw_on_missing=True,
-        )
-    except Exception as exc:
-        print(f"[ERROR] Config validation failed: {exc}")
-        return
-
-    if cfg.mlflow.model_name:
-        # check if model_name is in {catalog}.{schema}.{model} format
-        parts = cfg.mlflow.model_name.split(".")
-        if len(parts) != 3:
-            raise ValueError(
-                "mlflow.model_name should be in {catalog}.{schema}.{model} format"
-            )
-
-    OmegaConf.set_readonly(cfg.train, True)
-    OmegaConf.set_readonly(cfg.mlflow, True)
+    final_config = OmegaConf.to_container(cfg, resolve=True)
 
     # training with mlflow logging
     settings.update({"mlflow": False})
@@ -144,15 +82,13 @@ def main(cfg: DictConfig) -> None:
 
         yolo_model = YOLO(cfg.train.model)
         yolo_model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
-        yolo_model.train(**OmegaConf.to_container(cfg.train, resolve=True))
+        train_params = cast(
+            dict[str, Any], OmegaConf.to_container(cfg.train, resolve=True)
+        )
+        yolo_model.train(**train_params)
 
-        save_dir = Path("runs/detect") / cfg.train.project / cfg.train.name
-        if cfg.mlflow.model_name:
-            log_best_and_last_models(
-                Path(save_dir),
-                cfg.mlflow.model_name,
-                int(cfg.train.get("imgsz", 640)),
-            )
+        save_dir = Path("../../runs/detect") / cfg.train.project / cfg.train.name
+        log_best_and_last_models(Path(save_dir))
 
 
 if __name__ == "__main__":

@@ -1,15 +1,3 @@
-#!/usr/bin/env python
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "mlflow[databricks]>=3.4.0",
-#     "numpy>=2.1.0",
-#     "pillow>=12.1.0",
-#     "python-dotenv>=1.2.1",
-#     "typer>=0.21.1",
-#     "ultralytics>=8.4.8",
-# ]
-# ///
 from __future__ import annotations
 
 import json

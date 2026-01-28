@@ -7,7 +7,7 @@ from typing import Iterable
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-SAMPLE_DIR = Path("experiments/sample_data")
+SAMPLE_DIR = Path("sample_data")
 
 
 @dataclass(frozen=True)

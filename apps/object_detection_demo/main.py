@@ -45,8 +45,7 @@ IMAGE_WIDTH = 420
 
 inputs, original_col, result_col = st.columns([1, 1, 1])
 
-with inputs:
-    st.markdown('<div class="inputs-panel">', unsafe_allow_html=True)
+with inputs.container(border=True):
     st.subheader("Inputs")
     registered_model_name = st.text_input(
         "Registered model name",

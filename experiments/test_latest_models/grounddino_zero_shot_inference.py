@@ -1,44 +1,34 @@
-"""
-# Zero-Shot Object Detection with Grounding DINO
-
-## 사전 준비
-1. 필요 리소스 다운로드
-uv run scripts/download_files.py jgryu --blob-path ml-workflow-object-detection-example/IDEA-Research/grounding-dino-base/ --dst-path artifacts/IDEA-Research/grounding-dino-base/
-
-## 실험 실행
-    uv run experiments/e00_grounddino_zero_shot_inference.py experiments/sample_data/cat_03.jpg "cat" --threshold 0.2 --save-path data/output_ground_dino/cat_03.jpg
-"""
-
 import sys
 from pathlib import Path
 
 import torch
 import typer
-from experiments.common.utils import load_image, plot_detections
 from transformers import GroundingDinoForObjectDetection, GroundingDinoProcessor
 
-MODEL_NAME = "artifacts/IDEA-Research/grounding-dino-base"
+from utils import load_image, plot_detections
 
 
 def main(
     image_path: Path = typer.Argument(..., help="입력 이미지 경로"),
     prompt: str = typer.Argument(..., help="탐지할 텍스트 (ex: cat,dog)"),
-    threshold: float = typer.Option(0.3, "--threshold", "-t", help="신뢰도 임계값"),
-    save_path: Path = typer.Option(
-        "result.jpg", "--save-path", "-o", help="결과 이미지 경로"
+    threshold: float = typer.Option(0.1, "--threshold", "-t", help="신뢰도 임계값"),
+    model_path: Path = typer.Option(
+        Path("../../artifacts/IDEA-Research/grounding-dino-base"),
+        "--model-path",
+        "-m",
+        help="사전학습된 모델",
     ),
+    save_path: Path = typer.Option(None, "--save-path", "-o", help="결과 이미지 경로"),
     device: str = typer.Option(
         "cuda" if torch.cuda.is_available() else "cpu", "--device", help="cpu/cuda 선택"
     ),
 ):
-    image_path = Path(image_path)
-    save_path = Path(save_path)
     if not image_path.exists():
         typer.echo(f"[ERROR] 이미지 파일 없음: {image_path}")
         sys.exit(1)
 
-    processor = GroundingDinoProcessor.from_pretrained(MODEL_NAME)
-    model = GroundingDinoForObjectDetection.from_pretrained(MODEL_NAME).to(device)
+    processor = GroundingDinoProcessor.from_pretrained(model_path)
+    model = GroundingDinoForObjectDetection.from_pretrained(model_path).to(device)
     image = load_image(image_path)
     text_query = [t.strip() for t in prompt.split(",") if t.strip()]
     prompt_str = ". ".join(text_query)
@@ -59,7 +49,6 @@ def main(
     boxes = results["boxes"].cpu().numpy()
     scores = results["scores"].cpu().numpy()
     labels = results["labels"]
-    save_path.parent.mkdir(parents=True, exist_ok=True)
     plot_detections(
         image, boxes, scores, labels, score_threshold=threshold, save_path=save_path
     )
