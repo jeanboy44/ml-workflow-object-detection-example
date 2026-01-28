@@ -1,0 +1,21 @@
+train:
+  data: ../../data/pcb_yolo/data.yaml  # required
+  model: ../../artifacts/yolo/yolo26n.pt  # required
+  epochs: 10  # required
+  save_period: 5
+  imgsz: 320  # required
+  batch: 2  # required
+  lr0: 0.0025
+  warmup_epochs: 0
+  device: null
+  project: runs/exp01_train_yolo  # required
+  name: yolo_test # required
+  exist_ok: true
+  freeze: 0
+  mosaic: 0.0
+  fraction: 0.01 # use 1% of data for quick test
+
+mlflow:
+  tracking_uri: databricks
+  experiment_name: /Shared/Experiments/exp05_train_yolo
+  run_name: yolo_test

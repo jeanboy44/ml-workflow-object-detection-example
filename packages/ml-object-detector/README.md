@@ -1,33 +1,26 @@
 # ml-object-detector
-객체 탐지 패키지입니다.
+MLflow Registry에서 YOLO 모델을 내려받아 간단히 예측하는 패키지입니다.
 
-## 📦 설치 방법
+## 설치 (uv)
 ```bash
 uv pip install "git+https://github.com/jeanboy44/ml-workflow-object-detection-example.git#subdirectory=packages/ml-object-detector"
 ```
-`#subdirectory=packages/ml-object-detector` 옵션을 반드시 포함하세요.
-- Python >= 3.11 필요
-- uv 최신 버전 권장(≥0.9.25)
 
-## ⚡️ 주요 기능
-- 객체 탐지 기능
+## 사용 예시
+```python
+from ml_object_detector import load, load_image, predict
 
-## 🛠️ 개발/테스트 환경
-- Python >= 3.11
-- uv, poetry, pip 모두 지원
-- 프로젝트 루트의 pyproject.toml을 기본으로 사용
+model = load("models:/exp05_yolo/Production", tracking_uri="databricks")
+image = load_image("sample.jpg")
+result = predict(model, image, threshold=0.25)
+print(result.detections)
+```
 
-### 테스트 실행 예시 (pytest)
+MLflow Databricks 연결 시 `.env`의 `DATABRICKS_HOST`, `DATABRICKS_TOKEN` 환경 변수를 사용합니다.
+`ML_OBJECT_DETECTOR_CACHE_DIR`를 설정하면 모델 가중치를 캐시하고, 캐시에 유효한 `.pt`가 있으면 다운로드를 생략합니다.
+실제 실행 예시는 `examples/ml_object_detector_demo.py`를 참고하세요.
+
+## 테스트
 ```bash
-pytest tests/
-```
-
-## 폴더 구조
-```
-ml-object-detector/
-├── README.md            # 패키지 상세 안내 파일
-├── pyproject.toml       # 패키지 메타데이터/의존성/빌드 설정 파일
-├── src                  # 실제 파이썬 코드(모듈) 폴더, 표준 src layout
-│   └── ml_object_detector    # "ml_object_detector" 패키지 네임스페이스 모듈 디렉토리
-└── tests                # 테스트 코드 저장 디렉토리
+uv run pytest packages/ml-object-detector/tests
 ```
