@@ -1,6 +1,6 @@
 train:
-  data: ../../data/pcb_yolo/data.yaml  # required
-  model: ../../artifacts/yolo/yolo26n.pt  # required
+  data: data/pcb_yolo/data.yaml  # required
+  model: artifacts/yolo/yolo26n.pt  # required
   epochs: 50  # required
   save_period: 10
   imgsz: 640  # required

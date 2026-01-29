@@ -4,7 +4,6 @@ from pathlib import Path
 import torch
 import typer
 from transformers import GroundingDinoForObjectDetection, GroundingDinoProcessor
-
 from utils import load_image, plot_detections
 
 
@@ -13,7 +12,7 @@ def main(
     prompt: str = typer.Argument(..., help="탐지할 텍스트 (ex: cat,dog)"),
     threshold: float = typer.Option(0.1, "--threshold", "-t", help="신뢰도 임계값"),
     model_path: Path = typer.Option(
-        Path("../../artifacts/IDEA-Research/grounding-dino-base"),
+        Path("artifacts/IDEA-Research/grounding-dino-base"),
         "--model-path",
         "-m",
         help="사전학습된 모델",
@@ -27,8 +26,15 @@ def main(
         typer.echo(f"[ERROR] 이미지 파일 없음: {image_path}")
         sys.exit(1)
 
-    processor = GroundingDinoProcessor.from_pretrained(model_path)
-    model = GroundingDinoForObjectDetection.from_pretrained(model_path).to(device)
+    model_source: str | Path = model_path
+    if not model_path.exists():
+        model_source = "IDEA-Research/grounding-dino-base"
+        typer.echo(
+            f"[INFO] 로컬 모델이 없어 Hugging Face에서 다운로드합니다: {model_source}"
+        )
+
+    processor = GroundingDinoProcessor.from_pretrained(model_source)
+    model = GroundingDinoForObjectDetection.from_pretrained(model_source).to(device)
     image = load_image(image_path)
     text_query = [t.strip() for t in prompt.split(",") if t.strip()]
     prompt_str = ". ".join(text_query)

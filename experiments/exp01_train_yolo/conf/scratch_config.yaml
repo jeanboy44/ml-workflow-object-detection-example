@@ -1,5 +1,5 @@
 train:
-  data: ../../data/pcb_yolo/data.yaml  # required
+  data: data/pcb_yolo/data.yaml  # required
   model: yolo26n.yaml  # .pt 가 아닌 .yaml 로 기존 학습된 weight은 학습에 사용하지 않음
   epochs: 50  # required
   save_period: 10

@@ -16,7 +16,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ### 의존성 설치
 ```sh
-uv sync  # 모든 의존성 설치 (pyproject.toml/uv.lock 기반)
+uv sync --no-cache --reinstall --all-groups # 모든 의존성 설치 (pyproject.toml/uv.lock 기반)
 ```
 
 ## 🧑‍💻 개발 환경

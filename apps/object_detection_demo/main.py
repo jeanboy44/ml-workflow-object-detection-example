@@ -3,10 +3,7 @@ from __future__ import annotations
 import time
 
 import streamlit as st
-from ml_object_detector import list_model_versions  # type: ignore[attr-defined]
-from ml_object_detector import list_models  # type: ignore[attr-defined]
-from ml_object_detector import load  # type: ignore[attr-defined]
-from ml_object_detector import predict  # type: ignore[attr-defined]
+from ml_object_detector import list_model_versions, list_models, load,predict
 from streamlit_utils import DetectionBox, annotate_image, render_image_selector
 
 st.set_page_config(page_title="ML Object Detector", layout="wide")
