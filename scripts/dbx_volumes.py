@@ -1,14 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "databricks-sdk>=0.81.0",
-#     "loguru>=0.7.3",
-#     "python-dotenv>=1.2.1",
-#     "rich>=14.3.1",
-#     "tqdm>=4.67.1",
-#     "typer>=0.21.1",
-# ]
-# ///
 """Databricks Volume 파일 유틸리티."""
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
